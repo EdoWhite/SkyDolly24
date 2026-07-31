@@ -31,6 +31,7 @@
 #include <QDateTime>
 
 #include <Kernel/SampleRate.h>
+#include <Kernel/SimulatorVersion.h>
 #include <Model/TimeVariableData.h>
 #include <Model/InitialPosition.h>
 #include <Model/Location.h>
@@ -147,6 +148,15 @@ public:
      *         if the timer is overdue, the returned value will be 0.
      */
     virtual int getRemainingReconnectTime() const noexcept = 0;
+
+    /*!
+     * Returns which simulator this plugin is connected to, as reported by the simulator itself
+     * when the connection was opened.
+     *
+     * \return the connected simulator; an invalid SimulatorVersion as long as no connection has
+     *         been established (\sa SimulatorVersion::isValid)
+     */
+    virtual SimulatorVersion getSimulatorVersion() const noexcept = 0;
 
     virtual bool setUserAircraftInitialPosition(const InitialPosition &initialPosition) noexcept = 0;
     virtual bool setUserAircraftPositionAndAttitude(const PositionData &positionData, const AttitudeData &attitudeData) noexcept = 0;

@@ -27,6 +27,7 @@
 #include <array>
 #include <memory>
 #include <optional>
+#include <utility>
 
 #include <QTimer>
 #include <QElapsedTimer>
@@ -101,6 +102,9 @@ struct AbstractSkyConnectPrivate
     // Set by connect plugins while executing inside a callback of the flight simulator's API,
     // where re-opening the connection would destroy the connection currently being iterated
     bool reconnectSuspended {false};
+    // Reported by the simulator when the connection is opened; stays valid after a disconnect, so
+    // that the last known simulator can still be shown
+    SimulatorVersion simulatorVersion;
 
     inline void updateSimulationTimeUpdateInterval() noexcept
     {
@@ -137,6 +141,16 @@ void AbstractSkyConnect::disconnect() noexcept
 int AbstractSkyConnect::getRemainingReconnectTime() const noexcept
 {
     return d->reconnectTimer.remainingTime();
+}
+
+SimulatorVersion AbstractSkyConnect::getSimulatorVersion() const noexcept
+{
+    return d->simulatorVersion;
+}
+
+void AbstractSkyConnect::setSimulatorVersion(SimulatorVersion simulatorVersion) noexcept
+{
+    d->simulatorVersion = std::move(simulatorVersion);
 }
 
 bool AbstractSkyConnect::setUserAircraftInitialPosition(const InitialPosition &initialPosition) noexcept

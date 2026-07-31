@@ -76,6 +76,11 @@ bool FlightSimulator::isRunning(Id id) noexcept
     case Id::MSFS:
         processName = "FlightSimulator.exe";
         break;
+    case Id::MSFS2024:
+        // Both the Steam and the MS Store edition of MSFS 2024 run under this name; the 2020
+        // executable keeps the unsuffixed "FlightSimulator.exe", so the two never collide.
+        processName = "FlightSimulator2024.exe";
+        break;
     case Id::Prepar3Dv5:
         processName = "Prepar3D.exe";
         break;
@@ -106,19 +111,87 @@ bool FlightSimulator::isRunning(Id id) noexcept
     return running;
 }
 
+namespace
+{
+    // Every simulator keeps its per-user data - UserCfg.opt, the Community folder, the package
+    // cache - below one of these directories, one per edition. Their presence is what "installed"
+    // is inferred from: the installation directory itself is chosen by the user (Steam library,
+    // WindowsApps, a separate drive) and is not recorded anywhere we can read reliably.
+    //
+    // %APPDATA% already points at .../AppData/Roaming, so the MS Store paths - which live under
+    // .../AppData/Local - have to be built from %LOCALAPPDATA% instead.
+    bool anyDirectoryExists(const QStringList &paths) noexcept
+    {
+        for (const QString &path : paths) {
+            if (!path.isEmpty() && QDir(path).exists()) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    QString roamingAppDataPath() noexcept
+    {
+        return QString::fromLocal8Bit(qgetenv("APPDATA"));
+    }
+
+    QString localAppDataPath() noexcept
+    {
+        return QString::fromLocal8Bit(qgetenv("LOCALAPPDATA"));
+    }
+
+    bool isMsfs2020Installed() noexcept
+    {
+        return anyDirectoryExists({
+            // Steam edition
+            roamingAppDataPath() + "/Microsoft Flight Simulator",
+            // MS Store edition
+            localAppDataPath() + "/Packages/Microsoft.FlightSimulator_8wekyb3d8bbwe/LocalCache"
+        });
+    }
+
+    bool isMsfs2024Installed() noexcept
+    {
+        return anyDirectoryExists({
+            // Steam edition
+            roamingAppDataPath() + "/Microsoft Flight Simulator 2024",
+            // MS Store edition ("Limitless" is the store package name of MSFS 2024)
+            localAppDataPath() + "/Packages/Microsoft.Limitless_8wekyb3d8bbwe/LocalCache"
+        });
+    }
+
+    bool isPrepar3Dv5Installed() noexcept
+    {
+        return anyDirectoryExists({
+            QString::fromLocal8Bit(qgetenv("PROGRAMDATA")) + "/Lockheed Martin/Prepar3D v5"
+        });
+    }
+}
+
 bool FlightSimulator::isInstalled(Id id) noexcept
 {
-    // Search the community folder: if found then we assume that MSFS is installed, too
-    QString appDataPath = QString::fromLocal8Bit(qgetenv("APPDATA"));
-
-    // MS Store edition
-    QDir communityFolderPath(appDataPath + "/Local/Packages/Microsoft.FlightSimulator_8wekyb3d8bbwe");
-    bool installed = communityFolderPath.exists();
-
-    if (!installed) {
-        // Steam edition
-        communityFolderPath.setPath(appDataPath + "/Microsoft Flight Simulator");
-        installed = communityFolderPath.exists();
+    // The previous implementation ignored its argument altogether and always answered for MSFS
+    // 2020, using a path that could not exist (%APPDATA% already ends in "Roaming", so
+    // "%APPDATA%/Local/Packages/..." never resolves). It therefore reported "not installed" on
+    // every machine that only has MSFS 2024, which is precisely the target of this fork.
+    bool installed {false};
+    switch (id) {
+    case Id::MSFS:
+        installed = isMsfs2020Installed();
+        break;
+    case Id::MSFS2024:
+        installed = isMsfs2024Installed();
+        break;
+    case Id::Prepar3Dv5:
+        installed = isPrepar3Dv5Installed();
+        break;
+    case Id::All:
+        // A plugin that works with any simulator is usable as soon as one of them is present
+        installed = isMsfs2024Installed() || isMsfs2020Installed() || isPrepar3Dv5Installed();
+        break;
+    case Id::None:
+        installed = false;
+        break;
     }
     return installed;
 }

@@ -69,6 +69,17 @@ public:
     void disconnect() noexcept override;
     int getRemainingReconnectTime() const noexcept override;
 
+    SimulatorVersion getSimulatorVersion() const noexcept override;
+
+    /*!
+     * Records which simulator answered when the connection was opened. To be called by the
+     * concrete plugin as soon as the simulator identifies itself.
+     *
+     * \param simulatorVersion
+     *        the simulator as reported by the simulator itself
+     */
+    void setSimulatorVersion(SimulatorVersion simulatorVersion) noexcept;
+
     bool setUserAircraftInitialPosition(const InitialPosition &initialPosition) noexcept override;
     bool freezeUserAircraft(bool enable) const noexcept override;
     bool sendSimulationEvent(SimulationEvent event, float arg1) noexcept override;

@@ -40,6 +40,8 @@
 #include "AboutDialog.h"
 #include "ui_AboutDialog.h"
 #include <Kernel/Version.h>
+#include <Kernel/SimulatorVersion.h>
+#include <PluginManager/SkyConnectManager.h>
 #include <chrono>
 
 using namespace std::chrono_literals;
@@ -140,14 +142,20 @@ void AboutDialog::frenchConnection() noexcept
 
 QString AboutDialog::getVersionInfo() const noexcept
 {
+    // The connected simulator is included because it is the single most useful fact in a bug
+    // report - the dialog text can be copied to the clipboard - and because it is not otherwise
+    // visible anywhere: which simulator answered is only known at runtime.
+    const SimulatorVersion simulatorVersion = SkyConnectManager::getInstance().getSimulatorVersion();
     return QStringLiteral("\"%1\" (%2)\n"
                           "Version %3 (%4)\n"
-                          "%5")
+                          "%5\n"
+                          "%6")
            .arg(Version::getCodeName(),
                 Version::getUserVersion(),
                 Version::getApplicationVersion(),
                 Version::getGitHash(),
-                Version::getGitDate().toLocalTime().toString());
+                Version::getGitDate().toLocalTime().toString(),
+                tr("Simulator: %1").arg(simulatorVersion.toString()));
 }
 
 // PRIVATE SLOTS

@@ -127,6 +127,15 @@ public:
 
     int getRemainingReconnectTime() const noexcept;
 
+    /*!
+     * Returns which simulator the current connect plugin is talking to, as reported by the
+     * simulator itself.
+     *
+     * \return the connected simulator; an invalid SimulatorVersion when no plugin is loaded or no
+     *         connection has been established yet (\sa SimulatorVersion::isValid)
+     */
+    SimulatorVersion getSimulatorVersion() const noexcept;
+
     bool setUserAircraftInitialPosition(const InitialPosition &initialPosition) noexcept;
     bool setUserAircraftPositionAndAttitude(const PositionData &positionData, const AttitudeData &attitudeData) noexcept;
     bool freezeUserAircraft(bool enable) noexcept;

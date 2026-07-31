@@ -183,6 +183,12 @@ int SkyConnectManager::getRemainingReconnectTime() const noexcept
     }
 }
 
+SimulatorVersion SkyConnectManager::getSimulatorVersion() const noexcept
+{
+    std::optional<std::reference_wrapper<SkyConnectIntf>> skyConnect = getCurrentSkyConnect();
+    return skyConnect ? skyConnect->get().getSimulatorVersion() : SimulatorVersion {};
+}
+
 bool SkyConnectManager::setUserAircraftInitialPosition(const InitialPosition &initialPosition) noexcept
 {
     std::optional<std::reference_wrapper<SkyConnectIntf>> skyConnect = getCurrentSkyConnect();
@@ -584,11 +590,17 @@ void SkyConnectManager::initialisePlugin() noexcept
                 }
             }
             if (!ok) {
-                // Default to the Flight Simulator 2020 plugin
-                for (auto &plugin : d->pluginHandles) {
-                    if (plugin.second.flightSimulatorId == FlightSimulator::Id::MSFS) {
-                        uuid = plugin.first;
-                        ok = tryAndSetCurrentSkyConnect(uuid);
+                // Default to a Microsoft Flight Simulator plugin, newest first: this fork targets
+                // MSFS 2024, and the 2020 plugin is only a fallback for an older installation
+                for (const auto flightSimulatorId : {FlightSimulator::Id::MSFS2024, FlightSimulator::Id::MSFS}) {
+                    for (auto &plugin : d->pluginHandles) {
+                        if (plugin.second.flightSimulatorId == flightSimulatorId) {
+                            uuid = plugin.first;
+                            ok = tryAndSetCurrentSkyConnect(uuid);
+                        }
+                        if (ok) {
+                            break;
+                        }
                     }
                     if (ok) {
                         break;

@@ -29,6 +29,8 @@ FlightSimulator::Id FlightSimulator::nameToId(const QString &name) noexcept {
     Id id {Id::None};
     if (name == FlightSimulatorNameAll) {
         id = Id::All;
+    } else if (name == FlightSimulatorNameMSFS2024) {
+        id = Id::MSFS2024;
     } else if (name == FlightSimulatorNameMSFS) {
         id = Id::MSFS;
     } else if (name == FlightSimulatorNamePrepar3Dv5) {

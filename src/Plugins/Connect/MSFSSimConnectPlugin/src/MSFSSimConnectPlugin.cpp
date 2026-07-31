@@ -1310,11 +1310,24 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
 
     case ::SIMCONNECT_RECV_ID_OPEN:
     {
+        // This is the only moment the simulator identifies itself. Which simulator is on the other
+        // end cannot be inferred from the SDK this plugin was compiled against, so record it here:
+        // the behaviour that differs between MSFS 2020 and MSFS 2024 branches on it.
         const auto open = static_cast<::SIMCONNECT_RECV_OPEN *>(receivedData);
-        qInfo() << "SimConnect: connected to" << open->szApplicationName
-                << "version" << open->dwApplicationVersionMajor << "." << open->dwApplicationVersionMinor
-                << "build" << open->dwApplicationBuildMajor << "." << open->dwApplicationBuildMinor
-                << "- SimConnect version" << open->dwSimConnectVersionMajor << "." << open->dwSimConnectVersionMinor;
+        SimulatorVersion simulatorVersion;
+        simulatorVersion.applicationName = QString::fromLocal8Bit(open->szApplicationName);
+        simulatorVersion.applicationVersionMajor = open->dwApplicationVersionMajor;
+        simulatorVersion.applicationVersionMinor = open->dwApplicationVersionMinor;
+        simulatorVersion.applicationBuildMajor = open->dwApplicationBuildMajor;
+        simulatorVersion.applicationBuildMinor = open->dwApplicationBuildMinor;
+        simulatorVersion.simConnectVersionMajor = open->dwSimConnectVersionMajor;
+        simulatorVersion.simConnectVersionMinor = open->dwSimConnectVersionMinor;
+        skyConnect->setSimulatorVersion(simulatorVersion);
+        qInfo() << "SimConnect: connected to" << simulatorVersion.toString();
+        if (!simulatorVersion.isMSFS2024()) {
+            qWarning() << "SimConnect: this build of Sky Dolly targets Microsoft Flight Simulator 2024;"
+                       << "running against" << simulatorVersion.applicationName << "is untested.";
+        }
         break;
     }
 

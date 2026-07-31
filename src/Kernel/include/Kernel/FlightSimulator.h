@@ -36,20 +36,34 @@ public:
     enum struct Id: std::uint8_t {
         None,
         All,
+        /*! Microsoft Flight Simulator 2020 */
         MSFS,
+        /*! Microsoft Flight Simulator 2024 */
+        MSFS2024,
         Prepar3Dv5
     };
 
     static constexpr const char *FlightSimulatorNameAll {"All"};
     static constexpr const char *FlightSimulatorNameMSFS {"MSFS"};
+    static constexpr const char *FlightSimulatorNameMSFS2024 {"MSFS2024"};
     static constexpr const char *FlightSimulatorNamePrepar3Dv5 {"Prepar3Dv5"};
 
     static Id nameToId(const QString &name) noexcept;
-    static bool isRunning(Id id) noexcept;
-    static bool isInstalled(Id id) noexcept;
 
-private:
-    static bool isMSFSInstalled() noexcept;
+    /*!
+     * Returns whether the flight simulator identified by \p id is currently running.
+     *
+     * Note that Id::All never reports a running simulator: it identifies a plugin that works with
+     * any simulator rather than a simulator that can be looked for by name.
+     */
+    static bool isRunning(Id id) noexcept;
+
+    /*!
+     * Returns whether the flight simulator identified by \p id is installed for the current user.
+     *
+     * Id::All reports whether any of the supported simulators is installed.
+     */
+    static bool isInstalled(Id id) noexcept;
 };
 
 #endif // FLIGHTSIMULATOR_H
