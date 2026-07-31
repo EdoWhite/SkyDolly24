@@ -39,7 +39,13 @@ Restano non provate registrazione, replay, motori e tutto ciò che richiede di v
   registra 189 test che pilotano i suoi tool da riga di comando (`GeoConvert`, `GeodSolve`,
   `Planimeter`, …); quei tool stanno in un `add_subdirectory(... EXCLUDE_FROM_ALL)` e non vengono
   mai compilati, quindi `ctest` li segnalava tutti «Not Run» e usciva con errore. Ora vengono
-  disattivati in `CMakeLists.txt` subito dopo `add_subdirectory`. `ctest` passa: **12/12, exit 0**.
+  disattivati in `CMakeLists.txt` subito dopo `add_subdirectory`, così `ctest` funziona anche dalla
+  radice del build tree, come documentato in `CLAUDE.md` (la workflow preesistente `unit-tests.yml`
+  aggirava il problema eseguendo `ctest` da `build/test`, che però salta in silenzio eventuali test
+  registrati fuori da `test/`).
+  Il `.gitattributes` che marca le fixture come binarie era stato aggiunto inseguendo l'ipotesi
+  sbagliata dei CRLF: resta perché è comunque corretto — quelle fixture sono confrontate byte per
+  byte — ma non era la causa di alcun problema.
 - **Correzione del packaging**: la workflow eseguiva `windeployqt` sull'eseguibile e sui plugin in
   `bin/Plugins/`, ma `windeployqt` non segue le librerie proprie di Sky Dolly. `Qt6Sql.dll` — e con
   essa l'intera cartella `sqldrivers/` che serve al logbook — arriva **solo** da `Persistence.dll`,
