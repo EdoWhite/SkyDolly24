@@ -1,0 +1,7 @@
+# Unit test fixtures are parsed and compared byte for byte, and are embedded into the test binaries
+# via Qt resource files. Git for Windows converts text files to CRLF on checkout by default, which
+# silently changes those bytes and breaks the parser tests. Keep them exactly as committed.
+test/PluginManagerTest/res/test/** -text
+
+# Same reasoning: reference data shipped with the application
+src/Persistence/res/migr/** -text

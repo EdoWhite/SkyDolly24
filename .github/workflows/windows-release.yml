@@ -92,9 +92,22 @@ jobs:
       - name: Build
         run: cmake --build "${{ env.BUILD_DIR }}" --parallel
 
+      # The job log is only readable with a token, so on failure the tail of the ctest output is
+      # emitted as a workflow annotation, which is readable without one. Failing the job is deferred
+      # to the last step so that a package is still produced and can be inspected.
       - name: Run unit tests
-        working-directory: ${{ env.BUILD_DIR }}
-        run: ctest --output-on-failure --no-tests=error
+        id: tests
+        continue-on-error: true
+        shell: pwsh
+        run: |
+          $output = ctest --test-dir "${{ env.BUILD_DIR }}" --output-on-failure --no-tests=error 2>&1 | Out-String
+          Write-Host $output
+          if ($LASTEXITCODE -ne 0) {
+            $tail = ($output -split "`r?`n" | Where-Object { $_ -ne '' } | Select-Object -Last 80) -join "`n"
+            $encoded = $tail -replace '%', '%25' -replace "`n", '%0A' -replace "`r", '%0D'
+            Write-Host "::error title=Unit tests failed::$encoded"
+            exit 1
+          }
 
       - name: Deploy Qt runtime
         if: steps.simconnect.outputs.available == 'true'
@@ -170,3 +183,8 @@ jobs:
           name: SkyDolly-windows-x64
           path: ${{ env.PACKAGE_DIR }}
           if-no-files-found: error
+
+      # Deferred so that the artifact above is produced even when a test fails
+      - name: Fail if unit tests failed
+        if: steps.tests.outcome == 'failure'
+        run: exit 1
