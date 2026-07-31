@@ -46,6 +46,7 @@
 #include <PluginManager/SkyConnectManager.h>
 #include <Persistence/PersistenceManager.h>
 #include <PluginManager/PluginManager.h>
+#include <Remote/RemoteServer.h>
 #include <UserInterface/MainWindow.h>
 #include "ExceptionHandler.h"
 #include "SignalHandler.h"
@@ -108,6 +109,16 @@ int main(int argc, char **argv) noexcept
         {
             std::unique_ptr<MainWindow> mainWindow = std::make_unique<MainWindow>(filePath);
             mainWindow->show();
+
+            // The in-game panel drives Sky Dolly over this. It is started after the main window so
+            // that the plugins and the logbook it reports on are already in place, and a failure
+            // to bind is not fatal: the desktop window remains perfectly usable without it.
+            RemoteServer remoteServer;
+            if (!remoteServer.start()) {
+                qWarning() << "The in-game panel will not be able to reach Sky Dolly:"
+                           << remoteServer.getLastError();
+            }
+
             res = application.exec();
         }
         // Destroy singletons after main window has been deleted

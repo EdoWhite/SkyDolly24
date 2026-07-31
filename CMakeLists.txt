@@ -134,6 +134,7 @@ add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/Persistence)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/Flight)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/Widget)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/PluginManager)
+add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/Remote)
 add_subdirectory(${CMAKE_CURRENT_LIST_DIR}/src/UserInterface)
 
 # Application
