@@ -60,7 +60,7 @@ add_compile_definitions(QT_DISABLE_DEPRECATED_BEFORE=0x060800)
 option(SKY_REQUIRE_SIMCONNECT "Fail the build if the SimConnect SDK cannot be located [Windows]" OFF)
 
 # Qt
-find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Network LinguistTools)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Network Xml LinguistTools)
 
 # 3rd Party
 # ordered-map (Tessil)

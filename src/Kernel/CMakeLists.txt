@@ -17,6 +17,7 @@ CheckGitSetup()
 target_sources(${LIBRARY_NAME}
     PRIVATE
         include/Kernel/KernelLib.h
+        include/Kernel/AddonInstaller.h src/AddonInstaller.cpp
         include/Kernel/Color.h src/Color.cpp
         include/Kernel/Const.h
         include/Kernel/Convert.h src/Convert.cpp
@@ -65,6 +66,9 @@ target_link_libraries(${LIBRARY_NAME}
         GeographicLib::GeographicLib
         tsl::ordered_map
     PRIVATE
+        # QDomDocument: EXE.xml is shared with every other add-on, so entries have to be inserted
+        # and removed without disturbing the rest of the document
+        Qt6::Xml
         GitInfo
         cpptrace::cpptrace
 )

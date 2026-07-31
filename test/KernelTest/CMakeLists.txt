@@ -84,6 +84,27 @@ target_link_libraries(${TEST_NAME}
 )
 add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
 
+## AddonInstaller test ##
+set(TEST_NAME "AddonInstallerTest")
+
+qt_add_executable(${TEST_NAME})
+
+target_sources(${TEST_NAME}
+    PRIVATE
+        src/${TEST_NAME}.h src/${TEST_NAME}.cpp
+)
+
+set(TEST_LIBS
+    Qt6::Test
+    Sky::Kernel
+)
+
+target_link_libraries(${TEST_NAME}
+    PRIVATE
+        ${TEST_LIBS}
+)
+add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+
 ## CsvParser test ##
 set(TEST_NAME "CsvParserTest")
 

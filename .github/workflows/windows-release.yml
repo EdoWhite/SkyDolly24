@@ -149,12 +149,15 @@ jobs:
           Get-ChildItem -Path $pkg -Filter '*.ilk' | Remove-Item -Force -ErrorAction SilentlyContinue
           Get-ChildItem -Path $pkg -Filter '*.pdb' | Remove-Item -Force -ErrorAction SilentlyContinue
 
-          # The MSFS add-on package, once it exists (see msfs/).
-          if (Test-Path '${{ github.workspace }}/msfs/skydolly-panel') {
-            New-Item -ItemType Directory -Force -Path "${{ env.PACKAGE_DIR }}/SkyDolly/Community" | Out-Null
-            Copy-Item -Path '${{ github.workspace }}/msfs/skydolly-panel' `
-                      -Destination "${{ env.PACKAGE_DIR }}/SkyDolly/Community" -Recurse -Force
-          }
+          # The MSFS add-on: the panel package plus the scripts that register it with the
+          # simulator. --install-addon looks for the package at Community/skydolly-panel next to
+          # the executable, so that layout is what the package has to ship.
+          New-Item -ItemType Directory -Force -Path "$pkg/Community" | Out-Null
+          Copy-Item -Path '${{ github.workspace }}/msfs/skydolly-panel' `
+                    -Destination "$pkg/Community" -Recurse -Force
+          Copy-Item -Path '${{ github.workspace }}/msfs/Install.bat', `
+                          '${{ github.workspace }}/msfs/Uninstall.bat' `
+                    -Destination $pkg -Force
 
       - name: Verify package contents
         if: steps.simconnect.outputs.available == 'true'
@@ -171,7 +174,12 @@ jobs:
             'platforms/qwindows.dll',
             'Plugins/Connect/MSFSSimConnect.dll',
             'Plugins/Module/Logbook.dll',
-            'Resources/migr/Locations.csv'
+            'Resources/migr/Locations.csv',
+            'Install.bat',
+            'Uninstall.bat',
+            'Community/skydolly-panel/manifest.json',
+            'Community/skydolly-panel/layout.json',
+            'Community/skydolly-panel/html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.html'
           )
           $missing = $required | Where-Object { -not (Test-Path (Join-Path $pkg $_)) }
           # The SQLite driver is named qsqlite.dll on Qt 6 but has been renamed before, so just

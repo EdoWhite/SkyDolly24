@@ -39,7 +39,10 @@
 #include <QDebug>
 #endif
 
+#include <QDir>
+
 #include <Kernel/Version.h>
+#include <Kernel/AddonInstaller.h>
 #include <Kernel/StackTrace.h>
 #include <Kernel/Log.h>
 #include <Kernel/Settings.h>
@@ -130,11 +133,52 @@ int main(int argc, char **argv) noexcept
     };
     parser.addOption(noServerOption);
 
+    const QCommandLineOption installOption {
+        QStringList {"install-addon"},
+        QCoreApplication::translate("main",
+            "Install the toolbar panel into MSFS 2024 and have the simulator start Sky Dolly.")
+    };
+    parser.addOption(installOption);
+
+    const QCommandLineOption uninstallOption {
+        QStringList {"uninstall-addon"},
+        QCoreApplication::translate("main", "Undo --install-addon.")
+    };
+    parser.addOption(uninstallOption);
+
     parser.addPositionalArgument(
         QCoreApplication::translate("main", "logbook"),
         QCoreApplication::translate("main", "The logbook to open. The last used one if omitted."));
 
     parser.process(application);
+
+    if (parser.isSet(installOption) || parser.isSet(uninstallOption)) {
+        const bool installing = parser.isSet(installOption);
+        const QString executablePath = QCoreApplication::applicationFilePath();
+        const QString packageSourcePath =
+            QDir(QCoreApplication::applicationDirPath()).absoluteFilePath("Community/skydolly-panel");
+
+        const AddonInstaller::Result result = installing ?
+            AddonInstaller::install(executablePath, packageSourcePath) :
+            AddonInstaller::uninstall();
+
+        // A GUI application on Windows has no console to write to, so the outcome has to be shown
+        // where it will actually be seen; it also goes to the log for a scripted install
+        const QString report = result.messages.join('\n');
+        for (const QString &message : result.messages) {
+            qInfo().noquote() << message;
+        }
+        if (result.ok) {
+            QMessageBox::information(nullptr, QCoreApplication::translate("main", "Sky Dolly"),
+                                     installing ?
+                                         QCoreApplication::translate("main", "Sky Dolly is now installed in Microsoft Flight Simulator 2024.\n\n%1").arg(report) :
+                                         QCoreApplication::translate("main", "Sky Dolly has been removed from Microsoft Flight Simulator 2024.\n\n%1").arg(report));
+        } else {
+            QMessageBox::warning(nullptr, QCoreApplication::translate("main", "Sky Dolly"),
+                                 QCoreApplication::translate("main", "The operation did not complete.\n\n%1").arg(report));
+        }
+        return result.ok ? ErrorCodes::Ok : ErrorCodes::UnknownError;
+    }
 
     const QStringList positionalArguments = parser.positionalArguments();
     const QString filePath = positionalArguments.isEmpty() ? QString() : positionalArguments.constFirst();
