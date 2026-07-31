@@ -16,6 +16,7 @@ target_sources(${APP_NAME}
         src/main.cpp
         src/ExceptionHandler.h src/ExceptionHandler.cpp
         src/SignalHandler.h
+        src/CrashHandler.h
         src/ErrorCodes.h
         res/Info.plist.in
         res/SkyDolly.rc.in
@@ -54,6 +55,7 @@ if(${PLATFORM_IS_MACOS})
         PRIVATE
             src/SignalHandler_Unix.cpp
             src/UnixSignalHandler.h src/UnixSignalHandler.cpp
+            src/CrashHandler_Unix.cpp
             ${APP_ICON_PATH}
     )
 elseif(${PLATFORM_IS_WINDOWS})
@@ -85,12 +87,19 @@ elseif(${PLATFORM_IS_WINDOWS})
     target_sources(${APP_NAME}
         PRIVATE
             src/SignalHandler_Windows.cpp
+            src/CrashHandler_Windows.cpp
             $<TARGET_OBJECTS:resources>
+    )
+    # MiniDumpWriteDump: without a minidump an access violation leaves nothing behind at all
+    target_link_libraries(${APP_NAME}
+        PRIVATE
+            dbghelp
     )
 else()
     target_sources(${APP_NAME}
         PRIVATE
             src/SignalHandler_Unix.cpp
             src/UnixSignalHandler.h src/UnixSignalHandler.cpp
+            src/CrashHandler_Unix.cpp
     )
 endif()

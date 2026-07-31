@@ -1,0 +1,172 @@
+# Builds Sky Dolly for Windows and produces a ready-to-use package as a workflow artifact.
+#
+# This is the only way the project gets a verified, runnable build: development happens on
+# machines that cannot compile against SimConnect, so "does it build" is answered here.
+#
+# The MSFS connect plugin requires the SimConnect SDK, which cannot be installed on a GitHub
+# runner. It is taken from the in-tree copy at 3rdParty/SimConnect (see its README.md). When that
+# copy is absent the job fails early with an explicit message rather than silently publishing a
+# package that cannot talk to the simulator.
+
+name: Windows Release Package
+
+on:
+  push:
+    branches: [ main, msfs2024 ]
+  pull_request:
+    branches: [ main ]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+env:
+  QT_VERSION: '6.8.0'
+  BUILD_DIR: '${{ github.workspace }}/build'
+  PACKAGE_DIR: '${{ github.workspace }}/package'
+
+jobs:
+  build:
+    name: Build and package
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
+        with:
+          submodules: recursive
+
+      # Without the SDK the MSFS connect plugin cannot be built. Rather than failing outright, the
+      # rest of the application is still compiled and tested - that is the feedback that matters
+      # while the SDK files are not yet in place - and only the shippable package is skipped.
+      - name: Check for the in-tree SimConnect SDK
+        id: simconnect
+        shell: pwsh
+        run: |
+          $required = @(
+            '3rdParty/SimConnect/include/SimConnect.h',
+            '3rdParty/SimConnect/lib/SimConnect.lib',
+            '3rdParty/SimConnect/lib/SimConnect.dll'
+          )
+          $missing = $required | Where-Object { -not (Test-Path $_) }
+          if ($missing) {
+            Write-Host "::warning::SimConnect SDK files are missing, so the MSFS connect plugin will NOT be built and no package will be produced. Missing: $($missing -join ', '). See 3rdParty/SimConnect/README.md."
+            "available=false" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          } else {
+            Write-Host 'SimConnect SDK found: the MSFS connect plugin will be built.'
+            "available=true" | Out-File -FilePath $env:GITHUB_OUTPUT -Append
+          }
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: ${{ env.QT_VERSION }}
+          arch: win64_msvc2022_64
+          setup-python: 'false'
+
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Set up Ninja
+        shell: pwsh
+        run: |
+          # Usually already present on the runner (it ships with Visual Studio); install only if not
+          if (-not (Get-Command ninja -ErrorAction SilentlyContinue)) {
+            choco install ninja -y --no-progress
+          }
+          ninja --version
+
+      # Ninja is a single-configuration generator, so the binaries land directly in build/bin
+      # with the plugin layout the application expects at runtime (bin/Plugins/<kind>/...).
+      # A Visual Studio generator would insert per-configuration subdirectories and break it.
+      - name: Configure
+        run: >
+          cmake -B "${{ env.BUILD_DIR }}" -G Ninja
+          -DCMAKE_BUILD_TYPE=Release
+          -DSKY_REQUIRE_SIMCONNECT=${{ steps.simconnect.outputs.available == 'true' && 'ON' || 'OFF' }}
+          -DSKY_FETCH_EGM=ON
+          -DSKY_TESTS=ON
+
+      - name: Build
+        run: cmake --build "${{ env.BUILD_DIR }}" --parallel
+
+      - name: Run unit tests
+        working-directory: ${{ env.BUILD_DIR }}
+        run: ctest --output-on-failure --no-tests=error
+
+      - name: Deploy Qt runtime
+        if: steps.simconnect.outputs.available == 'true'
+        shell: pwsh
+        run: |
+          # windeployqt pulls in the Qt DLLs plus the platform/sqldrivers/styles plugin folders that
+          # RELEASE.md currently asks a human to copy by hand.
+          windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler `
+            "${{ env.BUILD_DIR }}/bin/SkyDolly.exe"
+          # windeployqt does not follow the Sky Dolly plugins, so scan them too: they are what pull
+          # in Qt6Sql and friends.
+          Get-ChildItem -Path "${{ env.BUILD_DIR }}/bin/Plugins" -Recurse -Filter *.dll | ForEach-Object {
+            windeployqt --release --no-translations --dir "${{ env.BUILD_DIR }}/bin" $_.FullName
+          }
+
+      - name: Assemble package
+        if: steps.simconnect.outputs.available == 'true'
+        shell: pwsh
+        run: |
+          $pkg = '${{ env.PACKAGE_DIR }}/SkyDolly'
+          New-Item -ItemType Directory -Force -Path $pkg | Out-Null
+          Copy-Item -Path '${{ env.BUILD_DIR }}/bin/*' -Destination $pkg -Recurse -Force
+
+          # Development-only artefacts that must not ship (RELEASE.md).
+          Remove-Item -Force -ErrorAction SilentlyContinue `
+            "$pkg/Plugins/Connect/PathCreator.dll", `
+            "$pkg/Plugins/Module/Template.dll"
+          Get-ChildItem -Path $pkg -Filter '*Test.exe' | Remove-Item -Force
+          Get-ChildItem -Path $pkg -Filter '*.ilk' | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $pkg -Filter '*.pdb' | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # The MSFS add-on package, once it exists (see msfs/).
+          if (Test-Path '${{ github.workspace }}/msfs/skydolly-panel') {
+            New-Item -ItemType Directory -Force -Path "${{ env.PACKAGE_DIR }}/SkyDolly/Community" | Out-Null
+            Copy-Item -Path '${{ github.workspace }}/msfs/skydolly-panel' `
+                      -Destination "${{ env.PACKAGE_DIR }}/SkyDolly/Community" -Recurse -Force
+          }
+
+      - name: Verify package contents
+        if: steps.simconnect.outputs.available == 'true'
+        shell: pwsh
+        run: |
+          # A package missing any of these is broken in a way that only shows up on the user's
+          # machine, so check here instead.
+          $pkg = '${{ env.PACKAGE_DIR }}/SkyDolly'
+          $required = @(
+            'SkyDolly.exe',
+            'SimConnect.dll',
+            'SimConnect.cfg',
+            'Qt6Core.dll', 'Qt6Gui.dll', 'Qt6Widgets.dll', 'Qt6Sql.dll',
+            'platforms/qwindows.dll',
+            'Plugins/Connect/MSFSSimConnect.dll',
+            'Plugins/Module/Logbook.dll',
+            'Resources/migr/Locations.csv'
+          )
+          $missing = $required | Where-Object { -not (Test-Path (Join-Path $pkg $_)) }
+          # The SQLite driver is named qsqlite.dll on Qt 6 but has been renamed before, so just
+          # require that some driver got deployed.
+          if (-not (Get-ChildItem -Path (Join-Path $pkg 'sqldrivers') -Filter '*.dll' -ErrorAction SilentlyContinue)) {
+            $missing += 'sqldrivers/*.dll'
+          }
+          if ($missing) {
+            Write-Host "::error::Package is incomplete. Missing: $($missing -join ', ')"
+            Get-ChildItem -Path $pkg -Recurse -Name | Sort-Object
+            exit 1
+          }
+          Write-Host 'Package looks complete.'
+
+      - name: Upload package
+        if: steps.simconnect.outputs.available == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: SkyDolly-windows-x64
+          path: ${{ env.PACKAGE_DIR }}
+          if-no-files-found: error

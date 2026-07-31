@@ -38,6 +38,7 @@
 
 #include <Kernel/Version.h>
 #include <Kernel/StackTrace.h>
+#include <Kernel/Log.h>
 #include <Kernel/Settings.h>
 #include <Kernel/System.h>
 #include <Kernel/RecentFile.h>
@@ -48,6 +49,7 @@
 #include <UserInterface/MainWindow.h>
 #include "ExceptionHandler.h"
 #include "SignalHandler.h"
+#include "CrashHandler.h"
 #include "ErrorCodes.h"
 
 static void destroySingletons() noexcept
@@ -67,12 +69,19 @@ static void destroySingletons() noexcept
 int main(int argc, char **argv) noexcept
 {
     std::set_terminate(ExceptionHandler::onTerminate);
+    // Catches the failures that std::set_terminate cannot see: access violations, stack overflows
+    // and other structured exceptions, which otherwise kill the process without a trace
+    CrashHandler::install();
 
     QCoreApplication::setOrganizationName(Version::getOrganisationName());
     QCoreApplication::setApplicationName(Version::getApplicationName());
     QCoreApplication::setAttribute(Qt::AA_DontShowIconsInMenus);
 
     QApplication application(argc, argv);
+
+    // Must come after the organisation/application names have been set: they determine the
+    // location of the log directory
+    Log::initialise();
 
     // Set the user interface style (if not default)
     // Implementation note: must be set AFTER QApplication instantiation
@@ -113,5 +122,6 @@ int main(int argc, char **argv) noexcept
         res = ErrorCodes::UnknownException;
     }
 
+    Log::shutdown();
     return res;
 }

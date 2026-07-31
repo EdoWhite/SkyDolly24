@@ -10,6 +10,11 @@
 *.dll
 *.dylib
 
+# ...except the SimConnect client library: it is a redistributable dependency (MIT licence, MSFS
+# SDK), not a build artefact, and checking it in is what lets CI build the connect plugin without
+# an SDK installation. See 3rdParty/SimConnect/README.md.
+!3rdParty/SimConnect/lib/SimConnect.dll
+
 # Qt-es
 object_script.*.Release
 object_script.*.Debug

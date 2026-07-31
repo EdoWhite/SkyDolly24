@@ -56,10 +56,10 @@ namespace
         Replay = 0x2,
         Pause = 0x4,
         Stop = 0x8,
-        Forward = 0x8,
-        Backward = 0x10,
-        Begin = 0x20,
-        End = 0x40,
+        Forward = 0x10,
+        Backward = 0x20,
+        Begin = 0x40,
+        End = 0x80,
         All = 0xffffffff
     };
     Q_DECLARE_FLAGS(KeySequenceStates, KeySequenceState)

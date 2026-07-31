@@ -44,6 +44,7 @@
 #include <QFileInfo>
 
 #include <Kernel/File.h>
+#include <Kernel/Log.h>
 #include <Kernel/Version.h>
 #include <Kernel/Settings.h>
 #include "Dialog/TerminationDialog.h"
@@ -122,7 +123,8 @@ QString TerminationDialog::createReport() const noexcept
         << "Executable path: " << QCoreApplication::applicationFilePath() << Qt::endl
         << "Sky Dolly version: " << Version::getApplicationVersion() << " \"" << Version::getCodeName() << "\"" << Qt::endl
         << "Sky Dolly build: " << Version::getGitHash() << Qt::endl
-        << "Logboog path: " << settings.getLogbookPath() << Qt::endl
+        << "Logbook path: " << settings.getLogbookPath() << Qt::endl
+        << "Log file: " << Log::getLogFilePath() << Qt::endl
         << "Plugin directory path: " << pluginDirectoryPath << Qt::endl;
     enumeratePluginContent(pluginDirectoryPath, out);
 

@@ -58,7 +58,10 @@ struct ConnectPluginBaseSettingsPrivate
     static inline const QKeySequence DefaultForwardShortcut {"Ctrl+."};
     static inline const QKeySequence DefaultBeginShortcut {"Ctrl+PgUp"};
     static inline const QKeySequence DefaultEndShortcut {"Ctrl+PgDown"};
+    // Note: FlightSimulatorShortcuts has eight members, starting with "record". Leaving the first
+    // one out shifts every default onto the wrong action and leaves "end" unbound.
     static inline const FlightSimulatorShortcuts DefaultFlightSimulatorShortcuts {
+        DefaultRecordShortcut,
         DefaultReplayShortcut,
         DefaultPauseShortcut,
         DefaultStopShortcut,

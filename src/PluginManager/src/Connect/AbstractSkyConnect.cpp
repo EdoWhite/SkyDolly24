@@ -32,9 +32,8 @@
 #include <QElapsedTimer>
 #include <QDateTime>
 #include <QWidget>
-#ifdef DEBUG
+// Not guarded by DEBUG: connection problems are reported in release builds as well
 #include <QDebug>
-#endif
 
 #include <Kernel/SkyMath.h>
 #include <Kernel/Const.h>
@@ -99,6 +98,9 @@ struct AbstractSkyConnectPrivate
     QElapsedTimer elapsedTimer;
     float replaySpeedFactor {1.0f};
     std::int64_t elapsedTime {0};
+    // Set by connect plugins while executing inside a callback of the flight simulator's API,
+    // where re-opening the connection would destroy the connection currently being iterated
+    bool reconnectSuspended {false};
 
     inline void updateSimulationTimeUpdateInterval() noexcept
     {
@@ -815,21 +817,32 @@ void AbstractSkyConnect::tryFirstConnectAndSetup() noexcept
 
 bool AbstractSkyConnect::retryWithReconnect(const std::function<bool()> &func)
 {
-    int nofAttempts {2};
-    bool ok {false};
-    while (!ok && nofAttempts > 0) {
-        ok = func();
-        if (!ok && nofAttempts > 0) {
-#ifdef DEBUG
-            qDebug() << "AbstractSkyConnect::retryWithReconnect: previous connection is stale, RETRY with reconnect" << nofAttempts << "more time(s)...";
-#endif
-            // Automatically reconnect in case the server crashed
-            // previously (without sending a "quit" message)
-            connectWithSim();
-            --nofAttempts;
+    bool ok = func();
+    if (!ok && !d->reconnectSuspended) {
+        // The connection may be stale because the simulator went away without sending a "quit"
+        // message. Drop it and establish a fresh one, then retry once.
+        //
+        // Note that the stale connection is explicitly closed first: simply opening another one
+        // overwrites the handle and leaks the previous connection, along with all the data
+        // definitions registered on it. Only the connection is torn down, not the state: a
+        // recording or replay in progress must survive a reconnect.
+        qInfo() << "Connect: the call into the flight simulator failed, reconnecting and retrying once";
+        onDisconnectFromSim();
+        if (connectWithSim()) {
+            ok = func();
         }
     }
     return ok;
+}
+
+void AbstractSkyConnect::setReconnectSuspended(bool suspend) noexcept
+{
+    d->reconnectSuspended = suspend;
+}
+
+bool AbstractSkyConnect::isReconnectSuspended() const noexcept
+{
+    return d->reconnectSuspended;
 }
 
 bool AbstractSkyConnect::setupInitialRecordingPosition(InitialPosition initialPosition) noexcept

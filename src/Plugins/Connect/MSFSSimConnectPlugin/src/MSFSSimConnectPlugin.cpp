@@ -34,9 +34,9 @@
 #include <QApplication>
 #include <QWidget>
 #include <QDateTime>
-#ifdef DEBUG
+// Not guarded by DEBUG: simulator exceptions and connection state are reported in release builds
+// as well, since they are the only diagnostics a user can send back.
 #include <QDebug>
-#endif
 
 #include <tsl/ordered_map.h>
 
@@ -75,6 +75,7 @@
 #include "Event/SimulationRate.h"
 #include "Event/SimulationTime.h"
 #include "Event/EventWidget.h"
+#include "SimConnectError.h"
 #include "SimConnectAi.h"
 #include "MSFSSimConnectSettings.h"
 #include "MSFSSimConnectOptionWidget.h"
@@ -116,6 +117,9 @@ struct SkyConnectPrivate
     tsl::ordered_map<QString, Waypoint> flightPlan;    
     bool pendingWaypointTime {false};
     bool subscribedToSimulatedFrameEvent {false};
+    // True while ::SimConnect_CallDispatch is walking the receive queue; used to refuse a nested
+    // dispatch on the same handle
+    bool dispatching {false};
     // ASRA - Active Sending Runway Alignment
     double currentAltitudeAboveGroundMinusCenterGravity {0.0};
     double currentAltitudeOffset {currentAltitudeAboveGroundMinusCenterGravity};
@@ -648,15 +652,6 @@ void MSFSSimConnectPlugin::frenchConnection() noexcept
             this, &MSFSSimConnectPlugin::emitActiveAction);
 }
 
-bool MSFSSimConnectPlugin::reconnectWithSim() noexcept
-{
-    bool ok {false};
-    if (closeConnection()) {
-        ok = connectWithSim();
-    }
-    return ok;
-}
-
 bool MSFSSimConnectPlugin::closeConnection() noexcept
 {
     HRESULT result {S_OK};
@@ -881,44 +876,39 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
 #ifdef DEBUG
             qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EVENT: CRASHED event";
 #endif
-            switch (skyConnect->getState()) {
-            case Connect::State::Recording:
-                skyConnect->stopRecording();
-                break;
-            case Connect::State::Replay:
-                skyConnect->stopReplay();
-                break;
-            default:
-                break;
-            }
+            // Stopping issues a whole batch of SimConnect calls (unsubscribe, request periods,
+            // transmit events), which must not happen while the dispatch callback is running.
+            QMetaObject::invokeMethod(skyConnect, [skyConnect]() noexcept {
+                skyConnect->handleSimulatorCrashed();
+            }, Qt::QueuedConnection);
             break;
 
         case SimConnectEvent::Event::CustomRecord:
 #ifdef DEBUG
             qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EVENT: CustomRecord event";
 #endif
-            emit skyConnect->actionActivated(FlightSimulatorShortcuts::Action::Record);
+            skyConnect->deferActionActivated(FlightSimulatorShortcuts::Action::Record);
             break;
 
         case SimConnectEvent::Event::CustomReplay:
 #ifdef DEBUG
             qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EVENT: CustomReplay event";
 #endif
-            emit skyConnect->actionActivated(FlightSimulatorShortcuts::Action::Replay);
+            skyConnect->deferActionActivated(FlightSimulatorShortcuts::Action::Replay);
             break;
 
         case SimConnectEvent::Event::CustomPause:
 #ifdef DEBUG
             qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EVENT: CustomPause event";
 #endif
-            emit skyConnect->actionActivated(FlightSimulatorShortcuts::Action::Pause);
+            skyConnect->deferActionActivated(FlightSimulatorShortcuts::Action::Pause);
             break;
 
         case SimConnectEvent::Event::CustomStop:
 #ifdef DEBUG
             qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EVENT: CustomStop event";
 #endif
-            emit skyConnect->actionActivated(FlightSimulatorShortcuts::Action::Stop);
+            skyConnect->deferActionActivated(FlightSimulatorShortcuts::Action::Stop);
             break;
 
         case SimConnectEvent::Event::CustomBackwardDown:
@@ -963,14 +953,14 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
 #ifdef DEBUG
             qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EVENT: CustomBegin event";
 #endif
-            emit skyConnect->actionActivated(FlightSimulatorShortcuts::Action::Begin);
+            skyConnect->deferActionActivated(FlightSimulatorShortcuts::Action::Begin);
             break;
 
         case SimConnectEvent::Event::CustomEnd:
 #ifdef DEBUG
             qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EVENT: CustomEnd event";
 #endif
-            emit skyConnect->actionActivated(FlightSimulatorShortcuts::Action::End);
+            skyConnect->deferActionActivated(FlightSimulatorShortcuts::Action::End);
             break;
 
         default:
@@ -1285,6 +1275,11 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
     case ::SIMCONNECT_RECV_ID_ASSIGNED_OBJECT_ID:
     {
         const auto objectData = static_cast<SIMCONNECT_RECV_ASSIGNED_OBJECT_ID *>(receivedData);
+        if (skyConnect->d->simConnectAi == nullptr) {
+            // The connection was closed while this response was still in flight: closeConnection()
+            // resets simConnectAi, so there is nothing left to register the object with.
+            break;
+        }
         std::int64_t simulationObjectId = objectData->dwObjectID;
         if (skyConnect->d->simConnectAi->registerObjectId(objectData->dwRequestID, simulationObjectId)) {
             ::SimConnect_AIReleaseControl(skyConnect->d->simConnectHandle, simulationObjectId, Enum::underly(SimConnectType::DataRequest::AiReleaseControl));
@@ -1305,29 +1300,42 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
 #ifdef DEBUG
         qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_QUIT";
 #endif
-        // Disconnect...
-        skyConnect->disconnect();
-        // ... and try to reconnect again
-        skyConnect->tryConnectAndSetup();
+        // Disconnecting closes the very SimConnect handle whose receive queue we are currently
+        // iterating over, and reconnecting opens a new one - both are unsafe from within the
+        // dispatch callback, so hand the work to the event loop.
+        QMetaObject::invokeMethod(skyConnect, [skyConnect]() noexcept {
+            skyConnect->handleSimulatorQuit();
+        }, Qt::QueuedConnection);
         break;
 
     case ::SIMCONNECT_RECV_ID_OPEN:
-#ifdef DEBUG
-        qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_OPEN";
-#endif
+    {
+        const auto open = static_cast<::SIMCONNECT_RECV_OPEN *>(receivedData);
+        qInfo() << "SimConnect: connected to" << open->szApplicationName
+                << "version" << open->dwApplicationVersionMajor << "." << open->dwApplicationVersionMinor
+                << "build" << open->dwApplicationBuildMajor << "." << open->dwApplicationBuildMinor
+                << "- SimConnect version" << open->dwSimConnectVersionMajor << "." << open->dwSimConnectVersionMinor;
         break;
+    }
 
     case ::SIMCONNECT_RECV_ID_EXCEPTION:
-#ifdef DEBUG
     {
-        const auto exception = static_cast<SIMCONNECT_RECV_EXCEPTION *>(receivedData);
-        qDebug() << "MSFSSimConnectPlugin::dispatch: SIMCONNECT_RECV_ID_EXCEPTION: A server exception" << exception->dwException
-                 << "happened: sender ID:" << exception->dwSendID
-                 << "index:" << exception->dwIndex
-                 << "data:" << cbData;
-    }
-#endif
+        // The simulator reports rejected requests here, asynchronously, instead of via a failed
+        // return code. Reporting this only in debug builds - as was previously the case - means
+        // that every request MSFS 2024 refuses is invisible in a release build.
+        const auto exception = static_cast<::SIMCONNECT_RECV_EXCEPTION *>(receivedData);
+        const char *name = SimConnectError::nameOf(exception->dwException);
+        const char *hint = SimConnectError::hintFor(exception->dwException);
+        qWarning() << "SimConnect: the simulator rejected a request:"
+                   << (name != nullptr ? name : "UNKNOWN")
+                   << "(code" << exception->dwException << ")"
+                   << "send ID:" << exception->dwSendID
+                   << "parameter index:" << exception->dwIndex;
+        if (hint != nullptr) {
+            qWarning() << "SimConnect:" << hint;
+        }
         break;
+    }
     case ::SIMCONNECT_RECV_ID_NULL:
 #ifdef DEBUG
         qDebug() << "MSFSSimConnectPlugin::dispatch: IMCONNECT_RECV_ID_NULL";
@@ -1351,9 +1359,57 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
 
 void MSFSSimConnectPlugin::processSimConnectEvent() noexcept
 {
+    // A window message may still be queued after the connection has been closed, in which case the
+    // handle is already null.
+    if (d->simConnectHandle == nullptr) {
+        return;
+    }
+    // Guards against re-entering the receive queue: a slot invoked (directly) from within dispatch
+    // must never cause a second, nested ::SimConnect_CallDispatch on the same handle.
+    if (d->dispatching) {
+        return;
+    }
+    d->dispatching = true;
+    // Handlers reached from here (a Pause event, for instance) end up in calls that are wrapped in
+    // retryWithReconnect(). Reconnecting would close the handle whose receive queue we are walking,
+    // so the automatic reconnect is suspended for the duration of the dispatch; the reconnect timer
+    // picks up a genuinely broken connection shortly afterwards.
+    setReconnectSuspended(true);
     updateCurrentTimestamp();
     // Process system events
     ::SimConnect_CallDispatch(d->simConnectHandle, MSFSSimConnectPlugin::dispatch, this);
+    setReconnectSuspended(false);
+    d->dispatching = false;
+}
+
+void MSFSSimConnectPlugin::handleSimulatorQuit() noexcept
+{
+    qInfo() << "SimConnect: the simulator has quit - disconnecting and awaiting its return";
+    // Disconnect...
+    disconnect();
+    // ... and try to reconnect again
+    tryConnectAndSetup();
+}
+
+void MSFSSimConnectPlugin::handleSimulatorCrashed() noexcept
+{
+    switch (getState()) {
+    case Connect::State::Recording:
+        stopRecording();
+        break;
+    case Connect::State::Replay:
+        stopReplay();
+        break;
+    default:
+        break;
+    }
+}
+
+void MSFSSimConnectPlugin::deferActionActivated(FlightSimulatorShortcuts::Action action) noexcept
+{
+    QMetaObject::invokeMethod(this, [this, action]() noexcept {
+        emit actionActivated(action);
+    }, Qt::QueuedConnection);
 }
 
 void MSFSSimConnectPlugin::emitActiveAction() noexcept

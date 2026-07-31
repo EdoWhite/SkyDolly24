@@ -141,9 +141,21 @@ protected:
     Flight &getCurrentFlight() const;
     void setCurrentTimestamp(std::int64_t timestamp) noexcept;
 
-    bool isElapsedTimerRunning() const noexcept;   
+    bool isElapsedTimerRunning() const noexcept;
     void startElapsedTimer() const noexcept;
     void resetElapsedTime(bool restart) noexcept;
+
+    /*!
+     * Suspends (\p suspend is \c true) or resumes the automatic reconnect that #retryWithReconnect
+     * performs when a call into the flight simulator fails.
+     *
+     * Connect plugins suspend it while they are inside a callback of the flight simulator's own
+     * API: re-opening the connection at that point tears down the very connection whose callback
+     * is executing. The failed call is then simply reported as failed, and the regular reconnect
+     * timer picks the connection up again afterwards.
+     */
+    void setReconnectSuspended(bool suspend) noexcept;
+    bool isReconnectSuspended() const noexcept;
 
     void createAiObjects() noexcept;
 

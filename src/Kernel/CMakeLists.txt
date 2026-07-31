@@ -24,6 +24,7 @@ target_sources(${LIBRARY_NAME}
         include/Kernel/Enum.h
         include/Kernel/File.h src/File.cpp
         include/Kernel/FlightSimulator.h src/FlightSimulator.cpp
+        include/Kernel/Log.h src/Log.cpp
         include/Kernel/Name.h
         include/Kernel/PositionParser.h src/PositionParser.cpp
         include/Kernel/RecentFile.h src/RecentFile.cpp

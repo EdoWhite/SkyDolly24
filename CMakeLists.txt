@@ -53,9 +53,14 @@ if("${CMAKE_BUILD_TYPE}" STREQUAL "Debug")
 endif()
 # No use of deprecated Qt functionality before Qt 6.8
 add_compile_definitions(QT_DISABLE_DEPRECATED_BEFORE=0x060800)
- 
+
+# Fail the configure step when the MSFS connect plugin cannot be built. Off by default so that
+# the non-Windows builds (and Windows builds without the SDK) keep working; the release CI turns
+# it on so a package that cannot talk to the simulator can never be published.
+option(SKY_REQUIRE_SIMCONNECT "Fail the build if the SimConnect SDK cannot be located [Windows]" OFF)
+
 # Qt
-find_package(Qt6 REQUIRED COMPONENTS Widgets Sql LinguistTools)
+find_package(Qt6 REQUIRED COMPONENTS Widgets Sql Network LinguistTools)
 
 # 3rd Party
 # ordered-map (Tessil)

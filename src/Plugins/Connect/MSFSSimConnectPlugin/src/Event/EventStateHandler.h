@@ -213,15 +213,17 @@ public:
     inline bool sendAircraftHandle(const SimConnectAircraftHandleAll &aircraftHandle) noexcept
     {
         const SimConnectAircraftHandleEvent &event = aircraftHandle.event;
+        // Each result is folded into "ok": previously only the gear handle was evaluated and the
+        // other three return values were discarded, so a broken connection went unnoticed here.
         bool ok = sendGearHandlePosition(event.gearHandlePosition);
         if (ok) {
-            sendTailhookHandlePosition(aircraftHandle.info.tailhookHandle);
+            ok = sendTailhookHandlePosition(aircraftHandle.info.tailhookHandle);
         }
         if (ok) {
-            sendWingFold(aircraftHandle.info.foldingWingHandlePosition);
+            ok = sendWingFold(aircraftHandle.info.foldingWingHandlePosition);
         }
         if (ok) {
-            sendSteeringAxis(aircraftHandle.coreEvent.gearSteerPosition);
+            ok = sendSteeringAxis(aircraftHandle.coreEvent.gearSteerPosition);
         }
         return ok;
     }
@@ -233,7 +235,7 @@ public:
         m_beaconLightToggle.requested = event.beacon;
         m_landingLightToggle.requested = event.landing;
         m_taxiLightToggle.requested = event.taxi;
-        m_strobeLightToggle.requested = event.taxi;
+        m_strobeLightToggle.requested = event.strobe;
         m_panelLightToggle.requested = event.panel;
         m_recognitionLightToggle.requested = event.recognition;
         m_wingLightToggle.requested = event.wing;

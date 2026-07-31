@@ -134,8 +134,11 @@ void SkyConnectManager::restoreSettings() const noexcept
 std::optional<std::reference_wrapper<SkyConnectIntf>> SkyConnectManager::getCurrentSkyConnect() const noexcept
 {
     QObject *plugin = d->pluginLoader->instance();
-    if (plugin != nullptr) {
-        return std::optional<std::reference_wrapper<SkyConnectIntf>>{*(qobject_cast<SkyConnectIntf *>(plugin))};
+    // A plugin that loads but does not implement SkyConnectIntf yields a null cast: dereferencing
+    // that would crash every one of the ~40 forwarding methods below.
+    auto *skyConnect = qobject_cast<SkyConnectIntf *>(plugin);
+    if (skyConnect != nullptr) {
+        return std::optional<std::reference_wrapper<SkyConnectIntf>>{*skyConnect};
     } else {
         return {};
     }

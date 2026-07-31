@@ -108,10 +108,8 @@ private:
 
     void frenchConnection() noexcept;
 
-    bool reconnectWithSim() noexcept;
     bool closeConnection() noexcept;
     void setupRequestData() noexcept;
-    bool sendAircraftData(TimeVariableData::Access access) noexcept;
     void replay() noexcept;
     void updateRecordingFrequency() noexcept;
     void updateRequestPeriod(::SIMCONNECT_PERIOD period) noexcept;
@@ -124,9 +122,32 @@ private:
 
     static void CALLBACK dispatch(::SIMCONNECT_RECV *receivedData, DWORD cbData, void *context) noexcept;
 
+    /*!
+     * Queues \p action for emission via #actionActivated once the event loop regains control.
+     *
+     * Shortcut events arrive inside the SimConnect dispatch callback, and the connected user
+     * interface slots may start a recording or a replay - which in turn calls into SimConnect and,
+     * if the connection went stale, re-opens it. Doing that while SimConnect is still walking its
+     * receive queue is what makes the application crash, so the emission is deferred.
+     */
+    void deferActionActivated(FlightSimulatorShortcuts::Action action) noexcept;
+
 private slots:
     void processSimConnectEvent() noexcept;
     void emitActiveAction() noexcept;
+
+    /*!
+     * Reacts to the simulator having quit: closes the stale connection and starts trying to
+     * reconnect.
+     *
+     * Always invoked asynchronously (queued) from the dispatch callback: closing and re-opening
+     * the SimConnect handle that ::SimConnect_CallDispatch is currently iterating over is
+     * undefined behaviour.
+     */
+    void handleSimulatorQuit() noexcept;
+
+    //! Reacts to the "Crashed" simulator event by stopping any recording or replay (queued).
+    void handleSimulatorCrashed() noexcept;
 };
 
 #endif // MSFSIMCONNNECTPLUGIN_H
