@@ -64,14 +64,18 @@ Documento di passaggio di consegne fra sessioni e fra macchine. Il piano complet
 
 ## Problemi aperti
 
-1. **I test unitari falliscono su Windows.** La workflow preesistente li eseguiva solo su Ubuntu,
-   quindi è la prima volta che girano su Windows: probabilmente un difetto preesistente, non
-   introdotto dal porting. Nessun test tocca il codice modificato. Ipotesi principale: Git per
-   Windows converte in CRLF le fixture di test, che sono confrontate byte per byte e incorporate via
-   Qt resource. Mitigato con `.gitattributes`; la CI ora emette l'output di ctest come annotazione
-   per confermarlo.
-2. **`3rdParty/SimConnect/` è vuota.** Senza i tre file dell'SDK la CI salta il plugin di
+1. **`3rdParty/SimConnect/` è vuota.** Senza i tre file dell'SDK la CI salta il plugin di
    connessione e non produce il pacchetto. Istruzioni in `3rdParty/SimConnect/README.md`.
+
+## Note
+
+- **`ctest` va eseguito da `build/test`, non dalla radice del build tree.** Alla radice sono
+  registrati anche i ~190 test di GeographicLib, i cui strumenti a riga di comando sono
+  `EXCLUDE_FROM_ALL` e quindi non vengono mai compilati: ctest li riporta come "Not Run" e
+  fallisce. È il motivo per cui la workflow preesistente `unit-tests.yml` fa `cd build/test`.
+- Il `.gitattributes` che marca le fixture come binarie è stato aggiunto inseguendo un'ipotesi
+  sbagliata (conversione CRLF). Resta perché è comunque corretto — quelle fixture sono confrontate
+  byte per byte — ma non era la causa di alcun problema.
 
 ---
 

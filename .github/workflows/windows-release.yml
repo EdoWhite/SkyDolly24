@@ -100,7 +100,10 @@ jobs:
         continue-on-error: true
         shell: pwsh
         run: |
-          $output = ctest --test-dir "${{ env.BUILD_DIR }}" --output-on-failure --no-tests=error 2>&1 | Out-String
+          # Scoped to build/test on purpose: the top level of the build tree also carries the tests
+          # that GeographicLib registers, whose command line tools are EXCLUDE_FROM_ALL and are
+          # therefore never built, so from there ctest reports ~190 tests as "Not Run" and fails.
+          $output = ctest --test-dir "${{ env.BUILD_DIR }}/test" --output-on-failure --no-tests=error 2>&1 | Out-String
           Write-Host $output
           if ($LASTEXITCODE -ne 0) {
             $tail = ($output -split "`r?`n" | Where-Object { $_ -ne '' } | Select-Object -Last 80) -join "`n"
