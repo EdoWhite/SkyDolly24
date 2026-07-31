@@ -17,8 +17,12 @@ Documento di passaggio di consegne fra sessioni e fra macchine. Il piano complet
 | 2 | Targeting MSFS 2024 (rilevamento versione, pause, INITPOSITION, tempo) | **a metà** — vedi sotto |
 | 3 | Allineamento e fluidità del replay | da fare |
 | 4 | Fedeltà motori e suoni | da fare |
-| 5 | Add-on del simulatore (servizio, installer, server locale, pannello) | da fare |
+| 5 | Add-on del simulatore (servizio, installer, server locale, pannello) | **scritta**, provata fuori dal simulatore |
 | 6 | Documentazione e release | da fare |
+
+**La Fase 5 è stata anticipata su richiesta dell'utente**, prima delle Fasi 3 e 4: l'obiettivo era
+poter usare Sky Dolly da dentro il gioco il prima possibile. Le Fasi 3 e 4 migliorano la *qualità*
+del replay, non l'accesso, quindi non erano un prerequisito.
 
 Dalla sessione del 2026-07-31 il progetto **compila, gira e si connette a MSFS 2024 su Windows**.
 Restano non provate registrazione, replay, motori e tutto ciò che richiede di volare davvero.
@@ -107,6 +111,37 @@ Da fare (il resto della Fase 2):
 
 [#186]: https://github.com/till213/SkyDolly/issues/186
 
+### Fase 5 — add-on del simulatore (anticipata)
+- **`src/Remote/`**, nuova libreria: server HTTP/1.1 minimale su `QTcpServer`, in ascolto **solo**
+  su loopback e che per giunta rifiuta ogni peer non-loopback. Endpoint `GET /api/state`,
+  `GET /api/events` (Server-Sent Events), `POST /api/command`, `GET /api/flights`, `POST /api/load`.
+  Gira nell'event loop dell'applicazione, non in un thread: nessun lock, nessun comando applicato a
+  metà. Token di accesso opzionale.
+  - Lo stream SSE spinge sui cambi di stato, ma il timestamp cambia a ogni frame del simulatore:
+    inoltrarlo significherebbe ~60 messaggi al secondo dentro il browser del sim. Un timer da 250 ms,
+    attivo solo se qualcuno ascolta, tiene la timeline fluida.
+  - `POST /api/load` risponde 409 se una registrazione o un replay è in corso: ricaricare il volo
+    corrente sotto il plugin lo lascerebbe a inviare dati di un volo che non esiste più.
+- **`msfs/skydolly-panel/`**, pacchetto Community: icona in toolbar e pannello con trasporto,
+  timeline scrubabile, velocità, elenco dei voli recenti e stato esplicito «Sky Dolly non in
+  esecuzione». JavaScript conservativo per Coherent GT (niente arrow function, template literal,
+  `const`/`let`, `async`/`await`).
+- **Lo stesso pannello è servito su `http://127.0.0.1:17285/`**, incorporato come risorsa Qt a
+  partire dagli stessi file del pacchetto Community: unica fonte di verità, i due non possono
+  divergere. Serve sia per sviluppare e provare senza lanciare il simulatore, sia come ripiego se un
+  Sim Update rompe il pannello in-game.
+- **Modalità servizio**: `QCommandLineParser` vero al posto del «simplistic command line parsing»
+  (`argv[1]` come percorso del logbook), più `--engine` (nessuna finestra, solo tray, con voce
+  «Open Sky Dolly»), `--port`, `--no-panel-server`. Guardia di istanza singola su `QLocalServer`:
+  il secondo processo passa la riga di comando al primo, lo fa venire in primo piano ed esce.
+- **`--install-addon` / `--uninstall-addon`** (`Kernel/AddonInstaller`): copia il pacchetto nella
+  `Community` e aggiunge una voce `Launch.Addon` a `EXE.xml`. `EXE.xml` è condiviso con tutti gli
+  altri add-on: backup prima di toccarlo, si riscrive solo la voce il cui `Name` è la nostra,
+  l'aggiunta è idempotente, e un file che non si parsifica viene **rifiutato** e lasciato intatto
+  (sostituirlo cancellerebbe in silenzio la registrazione di un altro add-on). La `Community` non è
+  a un percorso fisso: si legge `InstalledPackagesPath` da `UserCfg.opt`.
+  Script di comodo `msfs/Install.bat` e `msfs/Uninstall.bat`.
+
 ---
 
 ## Verifiche fatte davvero (2026-07-31, prima sessione su Windows)
@@ -127,7 +162,22 @@ Da fare (il resto della Fase 2):
 
   Prima di queste modifiche entrambe le colonne rispondevano «no» per MSFS 2024.
 
-**Non ancora provato**: registrazione, replay, motori, suoni, seek, teletrasporto, uscita al menu
+### Fase 5, verificata fuori dal simulatore
+- `ctest`: **14/14, exit 0** (aggiunti `HttpRequestTest` e `AddonInstallerTest`).
+- API provata contro MSFS 2024 in esecuzione: `/api/state` riporta il simulatore connesso,
+  `/api/flights` elenca i voli reali del logbook dal più recente, un comando risponde con lo stato
+  risultante, comando ed endpoint sconosciuti rispondono 400 e 404 invece di chiudere la connessione.
+- Pannello aperto in un browser su `http://127.0.0.1:17285/`: mostra il simulatore connesso, elenca
+  i 4 voli del logbook con aereo e località, e **cliccandone uno lo carica** — titolo, aereo, durata
+  9:36 e timeline attiva tornano indietro lungo tutta la catena. I pulsanti si abilitano e
+  disabilitano correttamente.
+- `--engine`: nessuna finestra principale, API comunque raggiungibile. Secondo avvio: esce con
+  codice 0, resta un solo processo, e la finestra del primo viene in primo piano.
+- Percorsi dell'installer verificati **in sola lettura** sull'installazione reale: `UserCfg.opt`
+  porta a una `Community` esistente, `EXE.xml` non esiste ancora.
+
+**Non ancora provato**: il pannello **dentro** il simulatore (vedi problemi aperti), registrazione,
+replay, motori, suoni, seek, teletrasporto, uscita al menu
 principale e chiusura del simulatore (cioè i percorsi che la Fase 1 doveva rendere sicuri).
 
 ---
@@ -146,6 +196,13 @@ principale e chiusura del simulatore (cioè i percorsi che la Fase 1 doveva rend
    girare su un runner self-hosted con l'SDK installato.
 3. Su questa macchina la build locale non è vincolata a `3rdParty/SimConnect/`: `FindSimConnect`
    trova l'SDK installato.
+4. **La registrazione del pannello nella toolbar non è confermata.** I pannelli in-game di terze
+   parti non sono documentati nell'SDK: `SkyDollyPanel.xml` segue quello che sembrano fare gli
+   add-on funzionanti, ma **non è ancora stato caricato da MSFS 2024**. Se l'icona non compare:
+   controllare che `layout.json` corrisponda ai file su disco, e aprire il debugger Coherent su
+   `http://127.0.0.1:19999` (con Developer Mode attivo) che elenca i pannelli davvero caricati.
+   Nel frattempo `http://127.0.0.1:17285/` funziona e offre la stessa identica interfaccia.
+   Dettagli in [`msfs/README.md`](../../msfs/README.md).
 
 ---
 
@@ -194,6 +251,9 @@ la CI): altrimenti manca `Qt6Sql.dll` e il logbook non si apre.
 
 ## Cosa serve dall'utente
 
+- **Installare l'add-on e dire se l'icona compare in toolbar.** Dalla cartella di build:
+  `build\bin\SkyDolly.exe --install-addon`, poi riavviare MSFS 2024. È l'unica verifica che non si
+  può fare da qui, ed è quella che dice se la Fase 5 è davvero finita.
 - **Tutte le prove dentro il simulatore**: registrazione, replay, motori, suoni, pannello. In
   particolare, per chiudere la Fase 1, i tre passaggi che prima facevano crashare: entrare in volo,
   tornare al menu principale, chiudere il simulatore mentre Sky Dolly è connesso.
