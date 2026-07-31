@@ -73,6 +73,23 @@ set_target_properties(GeographicLib_SHARED
         RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin"
 )
 
+# GeographicLib unconditionally calls enable_testing() and registers ~190 tests of its own. Those
+# tests drive its command line tools (GeoConvert, GeodSolve, Planimeter, ...), which are part of the
+# EXCLUDE_FROM_ALL subdirectory above and are therefore never built here: only the library is. As a
+# result every one of them is reported as "Not Run" and a plain "ctest" fails, drowning out the Sky
+# Dolly tests. Disable them so that the test run reflects this project only. GeographicLib is
+# consumed as a library and is tested upstream.
+set(GEOGRAPHICLIB_TESTS_DIR "${CMAKE_CURRENT_LIST_DIR}/3rdParty/geographiclib/tests")
+get_property(GEOGRAPHICLIB_TESTS DIRECTORY "${GEOGRAPHICLIB_TESTS_DIR}" PROPERTY TESTS)
+foreach(geographiclib_test IN LISTS GEOGRAPHICLIB_TESTS)
+    set_property(TEST ${geographiclib_test}
+        DIRECTORY "${GEOGRAPHICLIB_TESTS_DIR}"
+        PROPERTY DISABLED TRUE
+    )
+endforeach()
+list(LENGTH GEOGRAPHICLIB_TESTS GEOGRAPHICLIB_TEST_COUNT)
+message(STATUS "Disabled ${GEOGRAPHICLIB_TEST_COUNT} GeographicLib tests: its tools are not built here")
+
 # Cpptrace
 if(${PLATFORM_IS_WINDOWS} AND MINGW)
     # While MinGW provides an addr2line executable we do not want to ship / use it

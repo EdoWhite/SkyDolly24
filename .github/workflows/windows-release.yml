@@ -120,11 +120,16 @@ jobs:
           # RELEASE.md currently asks a human to copy by hand.
           windeployqt --release --no-translations --no-opengl-sw --no-system-d3d-compiler `
             "${{ env.BUILD_DIR }}/bin/SkyDolly.exe"
-          # windeployqt does not follow the Sky Dolly plugins, so scan them too: they are what pull
-          # in Qt6Sql and friends.
-          Get-ChildItem -Path "${{ env.BUILD_DIR }}/bin/Plugins" -Recurse -Filter *.dll | ForEach-Object {
-            windeployqt --release --no-translations --dir "${{ env.BUILD_DIR }}/bin" $_.FullName
-          }
+          # windeployqt inspects only the binary it is given: it follows that binary's direct Qt
+          # imports, but not the imports of Sky Dolly's own libraries. SkyDolly.exe therefore yields
+          # Qt6Core/Gui/Widgets only, while Qt6Sql - and with it the sqldrivers plugin folder the
+          # logbook needs - is reached solely through Persistence.dll. So scan every Sky Dolly
+          # library as well as every plugin. Missing any of them fails the verification step below,
+          # but only after the package has already been published, so keep this list exhaustive.
+          Get-ChildItem -Path "${{ env.BUILD_DIR }}/bin" -Recurse -Filter *.dll |
+            Where-Object { $_.Name -notlike 'Qt6*' } | ForEach-Object {
+              windeployqt --release --no-translations --dir "${{ env.BUILD_DIR }}/bin" $_.FullName
+            }
 
       - name: Assemble package
         if: steps.simconnect.outputs.available == 'true'
