@@ -27,8 +27,11 @@
 #include <QCoreApplication>
 #include <QSysInfo>
 #include <QApplication>
+#include <QCommandLineParser>
+#include <QCommandLineOption>
 #include <QStringList>
 #include <QString>
+#include <QDebug>
 #include <QStyleFactory>
 #include <QStringBuilder>
 #include <QMessageBox>
@@ -51,6 +54,7 @@
 #include "ExceptionHandler.h"
 #include "SignalHandler.h"
 #include "CrashHandler.h"
+#include "SingleInstance.h"
 #include "ErrorCodes.h"
 
 static void destroySingletons() noexcept
@@ -96,25 +100,94 @@ int main(int argc, char **argv) noexcept
     SignalHandler signalHandler;
     signalHandler.registerSignals();
 
-    // Simplistic command line parsing: first arg is assumed to be a file path
-    QStringList args = application.arguments();
-    QString filePath;
-    if (args.count() > 1) {
-        filePath = args.at(1);
+    QCommandLineParser parser;
+    parser.setApplicationDescription(
+        QCoreApplication::translate("main",
+            "Records and replays flights in Microsoft Flight Simulator 2024.\n\n"
+            "With no options the desktop window is shown. The simulator starts Sky Dolly with "
+            "--engine, in which case the window stays hidden and the panel in the simulator's "
+            "toolbar is the interface."));
+    parser.addHelpOption();
+    parser.addVersionOption();
+
+    const QCommandLineOption engineOption {
+        QStringList {"engine"},
+        QCoreApplication::translate("main", "Start without showing the window, in the notification area.")
+    };
+    parser.addOption(engineOption);
+
+    const QCommandLineOption portOption {
+        QStringList {"port"},
+        QCoreApplication::translate("main", "Serve the in-game panel API on <port> (default %1).")
+            .arg(RemoteServer::DefaultPort),
+        QCoreApplication::translate("main", "port")
+    };
+    parser.addOption(portOption);
+
+    const QCommandLineOption noServerOption {
+        QStringList {"no-panel-server"},
+        QCoreApplication::translate("main", "Do not serve the in-game panel API at all.")
+    };
+    parser.addOption(noServerOption);
+
+    parser.addPositionalArgument(
+        QCoreApplication::translate("main", "logbook"),
+        QCoreApplication::translate("main", "The logbook to open. The last used one if omitted."));
+
+    parser.process(application);
+
+    const QStringList positionalArguments = parser.positionalArguments();
+    const QString filePath = positionalArguments.isEmpty() ? QString() : positionalArguments.constFirst();
+    const bool engineMode = parser.isSet(engineOption);
+
+    quint16 panelServerPort {RemoteServer::DefaultPort};
+    if (parser.isSet(portOption)) {
+        bool ok {false};
+        const uint port = parser.value(portOption).toUInt(&ok);
+        if (!ok || port == 0 || port > 65535) {
+            qCritical() << "Not a valid port:" << parser.value(portOption);
+            return ErrorCodes::InvalidArgument;
+        }
+        panelServerPort = static_cast<quint16>(port);
     }
+
+    // The simulator launches Sky Dolly on its own now, so a user double-clicking the shortcut while
+    // it is already running is routine rather than unlikely - and two processes opening the same
+    // SQLite logbook is a good way to lose a recording.
+    SingleInstance singleInstance;
+    if (!singleInstance.tryBecomePrimary(filePath)) {
+        return ErrorCodes::Ok;
+    }
+
+    // In engine mode nothing is on screen, so closing the last dialog must not end the process
+    QApplication::setQuitOnLastWindowClosed(!engineMode);
 
     int res {ErrorCodes::Ok};
     try {
         // Main window scope
         {
             std::unique_ptr<MainWindow> mainWindow = std::make_unique<MainWindow>(filePath);
-            mainWindow->show();
+            if (engineMode) {
+                mainWindow->enterEngineMode();
+            } else {
+                mainWindow->show();
+            }
+
+            // A second launch brings this instance up rather than starting another one; in engine
+            // mode that is the only way the user can reach the window without the tray icon
+            QObject::connect(&singleInstance, &SingleInstance::anotherInstanceStarted,
+                             mainWindow.get(), [&mainWindow](const QString &logbookPath) noexcept {
+                if (!logbookPath.isEmpty()) {
+                    mainWindow->connectWithLogbook(logbookPath);
+                }
+                mainWindow->showFromTray();
+            });
 
             // The in-game panel drives Sky Dolly over this. It is started after the main window so
             // that the plugins and the logbook it reports on are already in place, and a failure
             // to bind is not fatal: the desktop window remains perfectly usable without it.
             RemoteServer remoteServer;
-            if (!remoteServer.start()) {
+            if (!parser.isSet(noServerOption) && !remoteServer.start(panelServerPort)) {
                 qWarning() << "The in-game panel will not be able to reach Sky Dolly:"
                            << remoteServer.getLastError();
             }

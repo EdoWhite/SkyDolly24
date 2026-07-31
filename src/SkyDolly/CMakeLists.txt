@@ -17,6 +17,7 @@ target_sources(${APP_NAME}
         src/ExceptionHandler.h src/ExceptionHandler.cpp
         src/SignalHandler.h
         src/CrashHandler.h
+        src/SingleInstance.h src/SingleInstance.cpp
         src/ErrorCodes.h
         res/Info.plist.in
         res/SkyDolly.rc.in
@@ -31,6 +32,7 @@ target_include_directories(${APP_NAME}
 target_link_libraries(${APP_NAME}
     PRIVATE
         Qt6::Widgets
+        Qt6::Network
         Sky::Kernel
         Sky::Model
         Sky::Persistence

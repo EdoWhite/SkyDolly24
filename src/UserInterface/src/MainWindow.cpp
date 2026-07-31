@@ -842,6 +842,38 @@ void MainWindow::createTrayIcon() noexcept
     d->trayIcon->setIcon(QIcon(":/img/icons/application-icon.png"));
 }
 
+void MainWindow::enterEngineMode() noexcept
+{
+    // Started by the simulator rather than by the user, so there is nothing to show: the panel in
+    // the simulator's toolbar is the interface. The notification area is the only way back to the
+    // window, so it has to offer it explicitly - the transport actions alone would leave the
+    // logbook, import and export unreachable.
+    auto *showAction = new QAction(tr("&Open Sky Dolly"), this);
+    connect(showAction, &QAction::triggered, this, &MainWindow::showFromTray);
+
+    d->trayIconMenu->insertAction(d->trayIconMenu->actions().constFirst(), showAction);
+    d->trayIconMenu->insertSeparator(d->trayIconMenu->actions().at(1));
+
+    // Double clicking the icon is what people try first
+    connect(d->trayIcon, &QSystemTrayIcon::activated, this,
+            [this](QSystemTrayIcon::ActivationReason reason) noexcept {
+        if (reason == QSystemTrayIcon::DoubleClick || reason == QSystemTrayIcon::Trigger) {
+            showFromTray();
+        }
+    });
+
+    d->trayIcon->setToolTip(tr("Sky Dolly - controlled from the simulator toolbar"));
+    d->trayIcon->show();
+}
+
+void MainWindow::showFromTray() noexcept
+{
+    show();
+    setWindowState((windowState() & ~Qt::WindowMinimized) | Qt::WindowActive);
+    raise();
+    activateWindow();
+}
+
 void MainWindow::initSkyConnectPlugin() noexcept
 {
     auto &skyConnectManager = SkyConnectManager::getInstance();

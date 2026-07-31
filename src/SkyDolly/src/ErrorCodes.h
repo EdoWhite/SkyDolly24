@@ -30,6 +30,7 @@ namespace ErrorCodes
     constexpr int StandardException {-1};
     constexpr int UnknownException {-2};
     constexpr int Signal {-3};
+    constexpr int InvalidArgument {-4};
     constexpr int UnknownError {-99};
 };
 

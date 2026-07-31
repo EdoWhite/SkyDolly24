@@ -67,6 +67,24 @@ public:
 
     bool connectWithLogbook(const QString &filePath) noexcept;
 
+    /*!
+     * Switches to the mode the simulator launches Sky Dolly in: the window stays hidden and the
+     * application lives in the notification area until the user asks for the window.
+     *
+     * The window is still constructed - it carries the module and connect plugin setup that the
+     * recording engine needs, and it is what "Open Sky Dolly" then shows - it is simply never
+     * shown. Call instead of \c show().
+     *
+     * \sa showFromTray
+     */
+    void enterEngineMode() noexcept;
+
+public slots:
+    /*!
+     * Shows and raises the window, whether it was hidden, minimised or behind the simulator.
+     */
+    void showFromTray() noexcept;
+
 protected:
     void resizeEvent(QResizeEvent *event) noexcept override;
     void closeEvent(QCloseEvent *event) noexcept override;
