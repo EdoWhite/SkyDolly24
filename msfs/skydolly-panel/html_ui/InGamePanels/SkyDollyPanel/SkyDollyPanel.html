@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<!-- Sky Dolly in-game panel.
+
+     Loaded both by Microsoft Flight Simulator, from the Community package, and by the Sky Dolly
+     service itself, which serves this very file at http://127.0.0.1:17285/. A complete document
+     rather than a fragment, so that the same file works in both places.
+
+     Keep it self contained: inside the simulator there is no network beyond the loopback service,
+     and no build step. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Sky Dolly</title>
+  <link rel="stylesheet" href="SkyDollyPanel.css">
+</head>
+<body>
+
+<div id="skydolly">
+
+  <div class="status" id="status">
+    <span class="dot" id="statusDot"></span>
+    <span class="statusText" id="statusText">Connecting to Sky Dolly&hellip;</span>
+  </div>
+
+  <!-- Shown when the service does not answer: without this the panel would just sit there empty
+       and the reason would be invisible. -->
+  <div class="offline" id="offline" hidden>
+    <p class="offlineTitle">Sky Dolly is not running</p>
+    <p>Start Sky Dolly on this PC. The panel connects on its own as soon as it does.</p>
+    <p class="hint">Expecting the service on <code id="offlineUrl"></code></p>
+    <button type="button" id="retry">Retry now</button>
+  </div>
+
+  <div id="main" hidden>
+
+    <div class="flight">
+      <div class="flightTitle" id="flightTitle">No flight loaded</div>
+      <div class="flightSub" id="flightSub"></div>
+    </div>
+
+    <div class="timeline">
+      <input type="range" id="seek" min="0" max="0" value="0" step="100" disabled>
+      <div class="times">
+        <span id="elapsed">0:00</span>
+        <span id="duration">0:00</span>
+      </div>
+    </div>
+
+    <div class="transport">
+      <button type="button" id="skipBegin" title="Skip to begin">&#124;&#9664;</button>
+      <button type="button" id="backward" title="Backward">&#9664;&#9664;</button>
+      <button type="button" id="play" title="Play / pause" class="primary">&#9654;</button>
+      <button type="button" id="forward" title="Forward">&#9654;&#9654;</button>
+      <button type="button" id="skipEnd" title="Skip to end">&#9654;&#124;</button>
+    </div>
+
+    <div class="transport">
+      <button type="button" id="record" class="record" title="Record">&#9679; Record</button>
+      <button type="button" id="stop" title="Stop">&#9632; Stop</button>
+    </div>
+
+    <div class="speed">
+      <label for="speedSelect">Replay speed</label>
+      <select id="speedSelect">
+        <option value="0.25">0.25&times;</option>
+        <option value="0.5">0.5&times;</option>
+        <option value="1" selected>1&times;</option>
+        <option value="2">2&times;</option>
+        <option value="4">4&times;</option>
+        <option value="8">8&times;</option>
+        <option value="16">16&times;</option>
+      </select>
+    </div>
+
+    <div class="flights">
+      <div class="flightsHeader">
+        <span>Recent flights</span>
+        <button type="button" id="refresh" class="link">Refresh</button>
+      </div>
+      <ul id="flightList"></ul>
+      <p class="hint" id="flightsHint" hidden></p>
+    </div>
+
+  </div>
+</div>
+
+<script src="SkyDollyPanel.js"></script>
+</body>
+</html>

@@ -107,6 +107,12 @@ private:
     Response handleCommand(const HttpRequest &request) noexcept;
     Response handleFlights(const HttpRequest &request) const noexcept;
     Response handleLoad(const HttpRequest &request) noexcept;
+    /*!
+     * Serves the in-game panel itself, embedded as a resource, so that the same interface is
+     * reachable from an ordinary browser on this machine. Returns 404 for anything that is not one
+     * of the handful of embedded files: this is not a file server.
+     */
+    Response handlePanel(const QString &path) const noexcept;
 
     static Response makeJson(const QJsonObject &object, int statusCode = 200) noexcept;
     static Response makeError(int statusCode, const QString &message) noexcept;

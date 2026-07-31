@@ -30,6 +30,9 @@
 #include <QByteArray>
 #include <QString>
 #include <QStringBuilder>
+#include <QHash>
+#include <QFile>
+#include <QIODevice>
 #include <QJsonObject>
 #include <QJsonArray>
 #include <QJsonDocument>
@@ -139,6 +142,13 @@ ApiHandler::Response ApiHandler::handle(const HttpRequest &request) noexcept
     if (request.path == "/api/load") {
         return request.method == "POST" ?
                handleLoad(request) : makeError(405, QStringLiteral("Use POST"));
+    }
+
+    if (request.method == "GET" || request.method == "HEAD") {
+        const Response panel = handlePanel(request.path);
+        if (panel.statusCode == 200) {
+            return panel;
+        }
     }
 
     return makeError(404, QStringLiteral("No such endpoint: ") % request.path);
@@ -315,6 +325,31 @@ ApiHandler::Response ApiHandler::handleLoad(const HttpRequest &request) noexcept
         return makeError(404, QStringLiteral("No flight with that id in the logbook"));
     }
     return makeJson(getState());
+}
+
+ApiHandler::Response ApiHandler::handlePanel(const QString &path) const noexcept
+{
+    // A closed set of embedded resources, not a file server: there is no path that reaches the
+    // file system, so there is nothing to traverse out of.
+    static const QHash<QString, QByteArray> panelFiles {
+        {QStringLiteral("/"), QByteArrayLiteral("text/html; charset=utf-8")},
+        {QStringLiteral("/SkyDollyPanel.html"), QByteArrayLiteral("text/html; charset=utf-8")},
+        {QStringLiteral("/SkyDollyPanel.css"), QByteArrayLiteral("text/css; charset=utf-8")},
+        {QStringLiteral("/SkyDollyPanel.js"), QByteArrayLiteral("text/javascript; charset=utf-8")},
+        {QStringLiteral("/favicon.svg"), QByteArrayLiteral("image/svg+xml")}
+    };
+
+    const auto it = panelFiles.constFind(path);
+    if (it == panelFiles.constEnd()) {
+        return Response {404, "application/json", {}, false};
+    }
+
+    const QString fileName = path == "/" ? QStringLiteral("SkyDollyPanel.html") : path.mid(1);
+    QFile file {QStringLiteral(":/panel/") % fileName};
+    if (!file.open(QIODevice::ReadOnly)) {
+        return Response {404, "application/json", {}, false};
+    }
+    return Response {200, it.value(), file.readAll(), false};
 }
 
 ApiHandler::Response ApiHandler::makeJson(const QJsonObject &object, int statusCode) noexcept

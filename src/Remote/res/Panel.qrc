@@ -1,0 +1,15 @@
+<!DOCTYPE RCC>
+<!-- The in-game panel is embedded into the service so that it can be served over the loopback
+     interface as well. That makes the same interface reachable from any browser on this PC, which
+     is both the way to try it without the simulator and the fallback if a Sim Update breaks the
+     custom toolbar panel - an undocumented, community-discovered mechanism.
+
+     The files are the very ones shipped in the Community package: single source of truth. -->
+<RCC version="1.0">
+    <qresource prefix="/panel">
+        <file alias="SkyDollyPanel.html">../../../msfs/skydolly-panel/html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.html</file>
+        <file alias="SkyDollyPanel.css">../../../msfs/skydolly-panel/html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.css</file>
+        <file alias="SkyDollyPanel.js">../../../msfs/skydolly-panel/html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.js</file>
+        <file alias="favicon.svg">../../../msfs/skydolly-panel/html_ui/icons/toolbar/ICON_TOOLBAR_SKYDOLLY.svg</file>
+    </qresource>
+</RCC>

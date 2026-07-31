@@ -1,0 +1,255 @@
+/* Sky Dolly in-game panel.
+
+   Deliberately plain CSS: the simulator's browser is Coherent GT, a fork of an older Chromium, and
+   the panel also has to render in an ordinary desktop browser when it is served by the Sky Dolly
+   service. No custom properties nesting, no grid gap shorthand tricks, no recent selectors. */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: #10161d;
+}
+
+#skydolly {
+    font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    font-size: 14px;
+    color: #e8eef5;
+    background: #10161d;
+    padding: 12px;
+    min-width: 260px;
+    box-sizing: border-box;
+}
+
+#skydolly * {
+    box-sizing: border-box;
+}
+
+/* Status ------------------------------------------------------------------ */
+
+.status {
+    display: flex;
+    align-items: center;
+    margin-bottom: 12px;
+    font-size: 12px;
+    color: #9fb0c0;
+}
+
+.dot {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: #6b7785;
+    margin-right: 8px;
+    flex: 0 0 auto;
+}
+
+.dot.online { background: #37c26a; }
+.dot.recording { background: #e2483d; }
+.dot.replaying { background: #3d95e2; }
+.dot.offline { background: #6b7785; }
+
+.statusText {
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Offline ----------------------------------------------------------------- */
+
+.offline {
+    background: #1b2530;
+    border: 1px solid #2c3a49;
+    border-radius: 6px;
+    padding: 14px;
+    line-height: 1.45;
+}
+
+.offlineTitle {
+    font-weight: 600;
+    color: #f0f4f8;
+    margin: 0 0 6px 0;
+}
+
+.offline p {
+    margin: 0 0 8px 0;
+    color: #9fb0c0;
+}
+
+.hint {
+    font-size: 11px;
+    color: #7b8b9a;
+}
+
+code {
+    font-family: Consolas, "Courier New", monospace;
+    color: #b9c8d6;
+}
+
+/* Flight ------------------------------------------------------------------ */
+
+.flight {
+    margin-bottom: 10px;
+}
+
+.flightTitle {
+    font-size: 15px;
+    font-weight: 600;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+.flightSub {
+    font-size: 12px;
+    color: #9fb0c0;
+    min-height: 16px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}
+
+/* Timeline ---------------------------------------------------------------- */
+
+.timeline {
+    margin-bottom: 12px;
+}
+
+#seek {
+    width: 100%;
+    margin: 0;
+}
+
+.times {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: #9fb0c0;
+    margin-top: 2px;
+}
+
+/* Transport --------------------------------------------------------------- */
+
+.transport {
+    display: flex;
+    margin-bottom: 8px;
+}
+
+.transport button {
+    flex: 1 1 auto;
+    margin-right: 6px;
+    padding: 9px 6px;
+    font-size: 13px;
+    color: #e8eef5;
+    background: #1f2b37;
+    border: 1px solid #2c3a49;
+    border-radius: 5px;
+    cursor: pointer;
+}
+
+.transport button:last-child { margin-right: 0; }
+.transport button:hover:enabled { background: #27353f; }
+.transport button:active:enabled { background: #16202a; }
+
+.transport button:disabled {
+    opacity: 0.4;
+    cursor: default;
+}
+
+.transport button.primary {
+    flex: 2 1 auto;
+    background: #24506f;
+    border-color: #2f6690;
+}
+
+.transport button.primary:hover:enabled { background: #2c5f84; }
+
+.transport button.record { color: #ff9c94; }
+.transport button.record.active {
+    background: #6d211c;
+    border-color: #93302a;
+    color: #ffd9d5;
+}
+
+/* Speed ------------------------------------------------------------------- */
+
+.speed {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 14px;
+    font-size: 12px;
+    color: #9fb0c0;
+}
+
+.speed select {
+    background: #1f2b37;
+    color: #e8eef5;
+    border: 1px solid #2c3a49;
+    border-radius: 5px;
+    padding: 5px 6px;
+    font-size: 12px;
+}
+
+/* Recent flights ---------------------------------------------------------- */
+
+.flights {
+    border-top: 1px solid #22303c;
+    padding-top: 10px;
+}
+
+.flightsHeader {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-size: 12px;
+    color: #9fb0c0;
+    margin-bottom: 6px;
+}
+
+button.link {
+    background: none;
+    border: none;
+    color: #6ea8dc;
+    cursor: pointer;
+    font-size: 12px;
+    padding: 0;
+}
+
+#flightList {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    max-height: 190px;
+    overflow-y: auto;
+}
+
+#flightList li {
+    padding: 7px 8px;
+    border-radius: 5px;
+    cursor: pointer;
+    border: 1px solid transparent;
+}
+
+#flightList li:hover {
+    background: #1b2530;
+    border-color: #2c3a49;
+}
+
+#flightList li.current {
+    background: #1b3348;
+    border-color: #2f6690;
+}
+
+.flightRow {
+    display: flex;
+    justify-content: space-between;
+    font-size: 13px;
+}
+
+.flightRowSub {
+    font-size: 11px;
+    color: #7b8b9a;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+}

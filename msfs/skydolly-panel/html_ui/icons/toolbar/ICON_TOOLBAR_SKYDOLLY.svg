@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- Toolbar icon for the Sky Dolly panel.
+
+     Toolbar icons are tinted by the simulator, so this is a single-colour silhouette using
+     currentColor rather than a fixed fill: a camera dolly carrying a film reel, which is what the
+     application's own icon plays on. -->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64"
+     fill="currentColor" role="img" aria-label="Sky Dolly">
+  <title>Sky Dolly</title>
+  <!-- Film reel -->
+  <path d="M32 8c-9.94 0-18 8.06-18 18s8.06 18 18 18 18-8.06 18-18S41.94 8 32 8zm0 5.4
+           c6.96 0 12.6 5.64 12.6 12.6S38.96 38.6 32 38.6 19.4 32.96 19.4 26 25.04 13.4 32 13.4z"/>
+  <circle cx="32" cy="18.4" r="3.1"/>
+  <circle cx="39.2" cy="29.6" r="3.1"/>
+  <circle cx="24.8" cy="29.6" r="3.1"/>
+  <!-- Dolly frame and wheels -->
+  <path d="M12 46h40a2 2 0 0 1 0 4H12a2 2 0 0 1 0-4z"/>
+  <circle cx="20" cy="56" r="4"/>
+  <circle cx="44" cy="56" r="4"/>
+</svg>

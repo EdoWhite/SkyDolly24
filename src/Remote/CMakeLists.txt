@@ -13,6 +13,7 @@ target_sources(${LIBRARY_NAME}
         include/Remote/HttpRequest.h src/HttpRequest.cpp
         include/Remote/ApiHandler.h src/ApiHandler.cpp
         include/Remote/RemoteServer.h src/RemoteServer.cpp
+        res/Panel.qrc
 )
 target_include_directories(${LIBRARY_NAME}
     INTERFACE

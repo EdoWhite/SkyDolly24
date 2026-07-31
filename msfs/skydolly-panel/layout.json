@@ -1,0 +1,29 @@
+{
+    "content":  [
+                    {
+                        "path":  "html_ui/icons/toolbar/ICON_TOOLBAR_SKYDOLLY.svg",
+                        "size":  977,
+                        "date":  134299831212541363
+                    },
+                    {
+                        "path":  "html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.css",
+                        "size":  4851,
+                        "date":  134299831569164036
+                    },
+                    {
+                        "path":  "html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.html",
+                        "size":  3245,
+                        "date":  134299831505832537
+                    },
+                    {
+                        "path":  "html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.js",
+                        "size":  12910,
+                        "date":  134299831061153195
+                    },
+                    {
+                        "path":  "html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.xml",
+                        "size":  840,
+                        "date":  134299831291051168
+                    }
+                ]
+}
