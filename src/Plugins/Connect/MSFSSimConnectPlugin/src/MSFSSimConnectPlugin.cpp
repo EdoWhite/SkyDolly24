@@ -88,6 +88,11 @@ namespace
     constexpr DWORD UserAirplaneRadiusMeters {0};
     // Initial keyboard shortcut / action repeat interval [milliseconds]
     constexpr int InitialRepeatActionInterval {256};
+
+    // The largest runway alignment correction ASRA may accumulate [feet]. Generous against any
+    // real difference between a recorded touchdown and the terrain under it, and small enough that
+    // a runaway integrator cannot put the aircraft somewhere absurd.
+    constexpr double MaximumAltitudeOffset {50.0};
 }
 
 struct SkyConnectPrivate
@@ -125,6 +130,17 @@ struct SkyConnectPrivate
     double currentAltitudeAboveGroundMinusCenterGravity {0.0};
     double currentAltitudeOffset {currentAltitudeAboveGroundMinusCenterGravity};
     bool altitudeAboveGroundSensorEnabled {false};
+
+    // The correction is an integrator: every frame on the ground it accumulates the measured
+    // distance between the aircraft and the runway. That is only meaningful for the touchdown it
+    // is currently correcting. Carried across a seek, a restarted replay or a reconnection it
+    // becomes a standing altitude error that grows without limit - the aircraft ends up buried in
+    // the runway, or hovering above it.
+    void resetAltitudeOffset() noexcept
+    {
+        currentAltitudeAboveGroundMinusCenterGravity = 0.0;
+        currentAltitudeOffset = 0.0;
+    }
 };
 
 // PUBLIC
@@ -348,6 +364,9 @@ void MSFSSimConnectPlugin::onStopRecording() noexcept
 
 bool MSFSSimConnectPlugin::onStartReplay(std::int64_t currentTimestamp) noexcept
 {
+    // Whatever the runway alignment worked out during the previous replay says nothing about this
+    // one, which may start on a different runway, at a different airport, in a different aircraft
+    d->resetAltitudeOffset();
     updateReplaySensorFrequency();
     HRESULT result {S_OK};
     // Send aircraft position every visual frame
@@ -382,6 +401,7 @@ void MSFSSimConnectPlugin::onReplayPaused([[maybe_unused]] Initiator initiator, 
 
 void MSFSSimConnectPlugin::onStopReplay() noexcept
 {
+    d->resetAltitudeOffset();
     updateReplaySensorFrequency();
     if (d->subscribedToSimulatedFrameEvent) {
         ::SimConnect_UnsubscribeFromSystemEvent(d->simConnectHandle, Enum::underly(SimConnectEvent::Event::Frame));
@@ -391,6 +411,9 @@ void MSFSSimConnectPlugin::onStopReplay() noexcept
 
 void MSFSSimConnectPlugin::onSeek([[maybe_unused]] std::int64_t currentTimestamp, [[maybe_unused]] SeekMode seekMode) noexcept
 {
+    // A seek moves the aircraft somewhere else entirely; a correction accumulated for the position
+    // it just left would be applied to a runway it is no longer on
+    d->resetAltitudeOffset();
     resetEventStates(ResetReason::Seek);
 };
 
@@ -1263,6 +1286,13 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
                 if (skyConnect->d->altitudeAboveGroundSensorEnabled) {
                     skyConnect->d->currentAltitudeAboveGroundMinusCenterGravity = replaySensor->altitudeSensor.planeAltitudeAboveGroundMinusCenterGravity;
                     skyConnect->d->currentAltitudeOffset -= skyConnect->d->currentAltitudeAboveGroundMinusCenterGravity;
+                    // Bounded, because this is an integrator with no feedback path of its own: a
+                    // sensor reading that is wrong, or a ground altitude the simulator has not
+                    // finished streaming, would otherwise walk the aircraft arbitrarily far from
+                    // where it was recorded. No real runway alignment needs more than this.
+                    skyConnect->d->currentAltitudeOffset =
+                        std::clamp(skyConnect->d->currentAltitudeOffset,
+                                   -::MaximumAltitudeOffset, ::MaximumAltitudeOffset);
 #ifdef DEBUG
                     qDebug() << "ASRA enabled: altitude above ground:" << replaySensor->altitudeSensor.planeAltitudeAboveGroundMinusCenterGravity
                              << "current altitude offset: " << skyConnect->d->currentAltitudeOffset
