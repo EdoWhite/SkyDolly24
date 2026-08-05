@@ -29,3 +29,15 @@ The following "cumulative records" are actually registered with SimConnect as da
 ### Request (Replay)
 - XUser: the combination of XCommon and possibly XCore; data sent as simulation variables to the user aircraft
 - XAi: the combination of XCommon and possibly XEvent; data sent as simulation variables to AI aircraft
+
+Note that XInfo therefore travels one way only: it is part of XAll, so it is recorded, but it is
+part of neither XUser nor XAi, so nothing in it is ever sent back to the simulator. That is the
+right home for a variable the simulator computes rather than accepts - engine speeds, for instance,
+which the engine model produces from the lever positions rather than taking as an input.
+
+## Layout
+
+Each of these structs is packed, and its memory layout *is* the SimConnect data definition: the
+order of the members and the order of the `addToDataDefinition` calls are the same list written
+twice. Adding a variable means adding it in both places, in the same position, or every field after
+it is read from the wrong bytes.

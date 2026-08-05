@@ -101,7 +101,15 @@ bool SQLiteEngineDao::add(std::int64_t aircraftId, const EngineData &data) const
         "  general_engine_combustion1,"
         "  general_engine_combustion2,"
         "  general_engine_combustion3,"
-        "  general_engine_combustion4"
+        "  general_engine_combustion4,"
+        "  general_engine_rpm1,"
+        "  general_engine_rpm2,"
+        "  general_engine_rpm3,"
+        "  general_engine_rpm4,"
+        "  turbine_engine_n1_percent1,"
+        "  turbine_engine_n1_percent2,"
+        "  turbine_engine_n1_percent3,"
+        "  turbine_engine_n1_percent4"
         ") values ("
         " :aircraft_id,"
         " :timestamp,"
@@ -132,7 +140,15 @@ bool SQLiteEngineDao::add(std::int64_t aircraftId, const EngineData &data) const
         " :general_engine_combustion1,"
         " :general_engine_combustion2,"
         " :general_engine_combustion3,"
-        " :general_engine_combustion4"
+        " :general_engine_combustion4,"
+        " :general_engine_rpm1,"
+        " :general_engine_rpm2,"
+        " :general_engine_rpm3,"
+        " :general_engine_rpm4,"
+        " :turbine_engine_n1_percent1,"
+        " :turbine_engine_n1_percent2,"
+        " :turbine_engine_n1_percent3,"
+        " :turbine_engine_n1_percent4"
         ");"
     );
 
@@ -166,6 +182,14 @@ bool SQLiteEngineDao::add(std::int64_t aircraftId, const EngineData &data) const
     query.bindValue(":general_engine_combustion2", data.generalEngineCombustion2);
     query.bindValue(":general_engine_combustion3", data.generalEngineCombustion3);
     query.bindValue(":general_engine_combustion4", data.generalEngineCombustion4);
+    query.bindValue(":general_engine_rpm1", data.generalEngineRpm1);
+    query.bindValue(":general_engine_rpm2", data.generalEngineRpm2);
+    query.bindValue(":general_engine_rpm3", data.generalEngineRpm3);
+    query.bindValue(":general_engine_rpm4", data.generalEngineRpm4);
+    query.bindValue(":turbine_engine_n1_percent1", data.turbineEngineN1Percent1);
+    query.bindValue(":turbine_engine_n1_percent2", data.turbineEngineN1Percent2);
+    query.bindValue(":turbine_engine_n1_percent3", data.turbineEngineN1Percent3);
+    query.bindValue(":turbine_engine_n1_percent4", data.turbineEngineN1Percent4);
 
     const bool ok = query.exec();
 #ifdef DEBUG
@@ -229,6 +253,14 @@ std::vector<EngineData> SQLiteEngineDao::getByAircraftId(std::int64_t aircraftId
         const auto generalEngineCombustion2Idx = record.indexOf("general_engine_combustion2");
         const auto generalEngineCombustion3Idx = record.indexOf("general_engine_combustion3");
         const auto generalEngineCombustion4Idx = record.indexOf("general_engine_combustion4");
+        const auto generalEngineRpm1Idx = record.indexOf("general_engine_rpm1");
+        const auto generalEngineRpm2Idx = record.indexOf("general_engine_rpm2");
+        const auto generalEngineRpm3Idx = record.indexOf("general_engine_rpm3");
+        const auto generalEngineRpm4Idx = record.indexOf("general_engine_rpm4");
+        const auto turbineEngineN1Percent1Idx = record.indexOf("turbine_engine_n1_percent1");
+        const auto turbineEngineN1Percent2Idx = record.indexOf("turbine_engine_n1_percent2");
+        const auto turbineEngineN1Percent3Idx = record.indexOf("turbine_engine_n1_percent3");
+        const auto turbineEngineN1Percent4Idx = record.indexOf("turbine_engine_n1_percent4");
 
         while (query.next()) {
             EngineData data;
@@ -261,6 +293,16 @@ std::vector<EngineData> SQLiteEngineDao::getByAircraftId(std::int64_t aircraftId
             data.generalEngineCombustion2 = query.value(generalEngineCombustion2Idx).toBool();
             data.generalEngineCombustion3 = query.value(generalEngineCombustion3Idx).toBool();
             data.generalEngineCombustion4 = query.value(generalEngineCombustion4Idx).toBool();
+            // Null for every flight recorded before these columns existed, which converts to zero:
+            // no engine speed was recorded, and that is exactly what zero means here
+            data.generalEngineRpm1 = query.value(generalEngineRpm1Idx).toFloat();
+            data.generalEngineRpm2 = query.value(generalEngineRpm2Idx).toFloat();
+            data.generalEngineRpm3 = query.value(generalEngineRpm3Idx).toFloat();
+            data.generalEngineRpm4 = query.value(generalEngineRpm4Idx).toFloat();
+            data.turbineEngineN1Percent1 = query.value(turbineEngineN1Percent1Idx).toFloat();
+            data.turbineEngineN1Percent2 = query.value(turbineEngineN1Percent2Idx).toFloat();
+            data.turbineEngineN1Percent3 = query.value(turbineEngineN1Percent3Idx).toFloat();
+            data.turbineEngineN1Percent4 = query.value(turbineEngineN1Percent4Idx).toFloat();
 
             engineData.push_back(std::move(data));
         }

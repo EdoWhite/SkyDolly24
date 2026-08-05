@@ -83,6 +83,19 @@ namespace SimVar
     constexpr const char *GeneralEngineCombustion3 = "General Eng Combustion:3";
     constexpr const char *GeneralEngineCombustion4 = "General Eng Combustion:4";
 
+    // How fast the engines are actually turning. These are outputs of the simulator's engine model,
+    // not inputs to it: they are recorded, never sent back. Without them a replay has only the
+    // lever positions to go on and the simulator has to spin its engines up from whatever state it
+    // happens to be in, which is why the engines and their sound run out of step with the flight
+    constexpr const char *GeneralEngineRpm1 = "General Eng RPM:1";
+    constexpr const char *GeneralEngineRpm2 = "General Eng RPM:2";
+    constexpr const char *GeneralEngineRpm3 = "General Eng RPM:3";
+    constexpr const char *GeneralEngineRpm4 = "General Eng RPM:4";
+    constexpr const char *TurbineEngineN1Percent1 = "Turb Eng N1:1";
+    constexpr const char *TurbineEngineN1Percent2 = "Turb Eng N1:2";
+    constexpr const char *TurbineEngineN1Percent3 = "Turb Eng N1:3";
+    constexpr const char *TurbineEngineN1Percent4 = "Turb Eng N1:4";
+
     constexpr const char *FlapsHandleIndex = "Flaps Handle Index";
     constexpr const char *LeadingEdgeFlapsLeftPercent = "Leading Edge Flaps Left Percent";
     constexpr const char *LeadingEdgeFlapsRightPercent = "Leading Edge Flaps Right Percent";

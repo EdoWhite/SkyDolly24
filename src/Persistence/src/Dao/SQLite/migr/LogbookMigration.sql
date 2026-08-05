@@ -1234,4 +1234,14 @@ alter table attitude_new rename to attitude;
 update metadata
 set    app_version = '0.20.0';
 
+@migr(id = "7b811791-b018-49ab-9378-f67f3438a935", descn = "Add engine speed columns", step = 1)
+alter table engine add column general_engine_rpm1 real;
+alter table engine add column general_engine_rpm2 real;
+alter table engine add column general_engine_rpm3 real;
+alter table engine add column general_engine_rpm4 real;
+alter table engine add column turbine_engine_n1_percent1 real;
+alter table engine add column turbine_engine_n1_percent2 real;
+alter table engine add column turbine_engine_n1_percent3 real;
+alter table engine add column turbine_engine_n1_percent4 real;
+
 

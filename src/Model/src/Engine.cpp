@@ -88,6 +88,16 @@ const EngineData &Engine::interpolate(std::int64_t timestamp, TimeVariableData::
             m_currentData.cowlFlapPosition3 = SkyMath::interpolateLinear(p1->cowlFlapPosition3, p2->cowlFlapPosition3, tn);
             m_currentData.cowlFlapPosition4 = SkyMath::interpolateLinear(p1->cowlFlapPosition4, p2->cowlFlapPosition4, tn);
 
+            // Engine speeds are continuous quantities, so they interpolate like the lever positions
+            m_currentData.generalEngineRpm1 = SkyMath::interpolateLinear(p1->generalEngineRpm1, p2->generalEngineRpm1, tn);
+            m_currentData.generalEngineRpm2 = SkyMath::interpolateLinear(p1->generalEngineRpm2, p2->generalEngineRpm2, tn);
+            m_currentData.generalEngineRpm3 = SkyMath::interpolateLinear(p1->generalEngineRpm3, p2->generalEngineRpm3, tn);
+            m_currentData.generalEngineRpm4 = SkyMath::interpolateLinear(p1->generalEngineRpm4, p2->generalEngineRpm4, tn);
+            m_currentData.turbineEngineN1Percent1 = SkyMath::interpolateLinear(p1->turbineEngineN1Percent1, p2->turbineEngineN1Percent1, tn);
+            m_currentData.turbineEngineN1Percent2 = SkyMath::interpolateLinear(p1->turbineEngineN1Percent2, p2->turbineEngineN1Percent2, tn);
+            m_currentData.turbineEngineN1Percent3 = SkyMath::interpolateLinear(p1->turbineEngineN1Percent3, p2->turbineEngineN1Percent3, tn);
+            m_currentData.turbineEngineN1Percent4 = SkyMath::interpolateLinear(p1->turbineEngineN1Percent4, p2->turbineEngineN1Percent4, tn);
+
             // No interpolation for battery and starter/combustion states (boolean)
             m_currentData.electricalMasterBattery1 = p1->electricalMasterBattery1;
             m_currentData.electricalMasterBattery2 = p1->electricalMasterBattery2;

@@ -63,6 +63,23 @@ struct MODEL_API EngineData final : public TimeVariableData
     bool generalEngineCombustion3 {false};
     bool generalEngineCombustion4 {false};
 
+    // How fast the engines are actually turning: revolutions per minute for piston and propeller
+    // engines, and the low pressure spool as a percentage of its nominal speed for turbines.
+    //
+    // These are recorded but not (yet) replayed: in the flight simulator they are outputs of the
+    // engine model rather than inputs to it, so which of them - if any - the simulator accepts on
+    // write has to be established in the simulator itself. Recording them is what makes that
+    // possible: without them the flights already in the logbook could never be replayed faithfully,
+    // however the replay side eventually turns out
+    float generalEngineRpm1 {0.0f};
+    float generalEngineRpm2 {0.0f};
+    float generalEngineRpm3 {0.0f};
+    float generalEngineRpm4 {0.0f};
+    float turbineEngineN1Percent1 {0.0f};
+    float turbineEngineN1Percent2 {0.0f};
+    float turbineEngineN1Percent3 {0.0f};
+    float turbineEngineN1Percent4 {0.0f};
+
     explicit EngineData(std::int16_t throttleLeverPosition1 = 0, std::int16_t propellerLeverPosition1 = 0, std::uint8_t mixtureLeverPosition1 = 0, std::uint8_t cowlFlapPosition1 = 0) noexcept;
 
     inline bool hasEngineStarterEnabled() const noexcept

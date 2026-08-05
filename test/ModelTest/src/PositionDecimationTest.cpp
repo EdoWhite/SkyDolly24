@@ -221,4 +221,3 @@ void PositionDecimationTest::straightAndLevelFlightCostsAlmostNothing() noexcept
 }
 
 QTEST_MAIN(PositionDecimationTest)
-#include "PositionDecimationTest.moc"

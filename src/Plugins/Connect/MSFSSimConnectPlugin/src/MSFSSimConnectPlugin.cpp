@@ -56,6 +56,7 @@
 #include <Model/AttitudeData.h>
 #include <Model/Engine.h>
 #include <Model/EngineData.h>
+#include <Model/EngineDecimation.h>
 #include <Model/PrimaryFlightControl.h>
 #include <Model/PrimaryFlightControlData.h>
 #include <Model/SecondaryFlightControl.h>
@@ -1143,8 +1144,18 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
                 auto simConnectEngineAll = reinterpret_cast<const SimConnectEngineAll *>(&objectData->dwData);
                 EngineData engineData = simConnectEngineAll->toEngineData();
                 engineData.timestamp = skyConnect->getCurrentTimestamp();
-                userAircraft.getEngine().upsertLast(engineData);
-                dataStored = true;
+
+                // The record is requested with SIMCONNECT_DATA_REQUEST_FLAG_CHANGED. Levers and
+                // switches sit still for whole legs, so it used to arrive rarely; the engine speeds
+                // that now travel with it never sit still, so it arrives on every frame. Store only
+                // the samples that say something the last stored one did not.
+                Engine &engine = userAircraft.getEngine();
+                const bool store = engine.count() == 0 ||
+                                   EngineDecimation::shouldStore(engine[engine.count() - 1], engineData);
+                if (store) {
+                    engine.upsertLast(engineData);
+                    dataStored = true;
+                }
             }
             break;
         }

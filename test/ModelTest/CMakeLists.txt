@@ -39,3 +39,21 @@ target_link_libraries(${TEST_NAME}
         Sky::Model
 )
 add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})
+
+## EngineDecimation Test ##
+set(TEST_NAME "EngineDecimationTest")
+
+qt_add_executable(${TEST_NAME})
+
+target_sources(${TEST_NAME}
+    PRIVATE
+        src/${TEST_NAME}.h src/${TEST_NAME}.cpp
+)
+
+target_link_libraries(${TEST_NAME}
+    PRIVATE
+        Qt6::Test
+        Sky::Kernel
+        Sky::Model
+)
+add_test(NAME ${TEST_NAME} COMMAND ${TEST_NAME})

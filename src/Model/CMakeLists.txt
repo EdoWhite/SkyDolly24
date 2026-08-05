@@ -30,6 +30,7 @@ target_sources(${LIBRARY_NAME}
         include/Model/InitialPosition.h src/InitialPosition.cpp
         include/Model/Engine.h src/Engine.cpp
         include/Model/EngineData.h src/EngineData.cpp
+        include/Model/EngineDecimation.h src/EngineDecimation.cpp
         include/Model/PrimaryFlightControl.h src/PrimaryFlightControl.cpp
         include/Model/PrimaryFlightControlData.h
         include/Model/SecondaryFlightControl.h src/SecondaryFlightControl.cpp

@@ -30,6 +30,7 @@
 #include "SimConnectEngineCommon.h"
 #include "SimConnectEngineCore.h"
 #include "SimConnectEngineEvent.h"
+#include "SimConnectEngineInfo.h"
 #include "SimConnectEngineUser.h"
 #include "SimConnectEngineAi.h"
 
@@ -44,6 +45,10 @@ struct SimConnectEngineAll
     SimConnectEngineCommon common;
     SimConnectEngineCore core;
     SimConnectEngineEvent event;
+    // Last, and it has to stay last: the memory layout of this struct is the layout of the data
+    // definition below, so the order of the members and the order of the addToDataDefinition calls
+    // are the same list written twice
+    SimConnectEngineInfo info;
 
     SimConnectEngineAll(const EngineData &data) noexcept
         : SimConnectEngineAll()
@@ -58,6 +63,7 @@ struct SimConnectEngineAll
         common.fromEngineData(data);
         core.fromEngineData(data);
         event.fromEngineData(data);
+        info.fromEngineData(data);
     }
 
     inline EngineData toEngineData() const noexcept
@@ -65,6 +71,7 @@ struct SimConnectEngineAll
         EngineData data = common.toEngineData();
         core.toEngineData(data);
         event.toEngineData(data);
+        info.toEngineData(data);
         return data;
     }
 
@@ -89,6 +96,9 @@ struct SimConnectEngineAll
         SimConnectEngineCommon::addToDataDefinition(simConnectHandle, Enum::underly(SimConnectType::DataDefinition::EngineAll));
         SimConnectEngineCore::addToDataDefinition(simConnectHandle, Enum::underly(SimConnectType::DataDefinition::EngineAll));
         SimConnectEngineEvent::addToDataDefinition(simConnectHandle, Enum::underly(SimConnectType::DataDefinition::EngineAll));
+        // Recorded only: neither user() nor ai() above carries it, so nothing here is ever sent
+        // back to the simulator
+        SimConnectEngineInfo::addToDataDefinition(simConnectHandle, Enum::underly(SimConnectType::DataDefinition::EngineAll));
     }
 };
 #pragma pack(pop)
