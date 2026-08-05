@@ -1310,6 +1310,16 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
 
     case ::SIMCONNECT_RECV_ID_EVENT_FRAME:
     {
+        // Take the clock reading here, at the frame, rather than relying on the one taken in
+        // processSimConnectEvent before the receive queue was walked. That reading is taken once
+        // per Windows message, which has nothing to do with when the simulator renders: several
+        // frames arriving in one dispatch would all be replayed at the same timestamp, and a
+        // message carrying no frame at all would advance the clock with nothing to show for it.
+        // Either way the replay beats against the frame rate. Sampling here makes one frame
+        // correspond to exactly one position, which is the whole point of driving replay from this
+        // event.
+        skyConnect->updateCurrentTimestamp();
+
         const Connect::State state = skyConnect->getState();
         if (state == Connect::State::Replay) {
             skyConnect->replay();
