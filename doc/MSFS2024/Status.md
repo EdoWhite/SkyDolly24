@@ -16,7 +16,7 @@ Documento di passaggio di consegne fra sessioni e fra macchine. Il piano complet
 | 1b | Log su file e crash handler Windows | scritta, **log verificato**; crash handler non ancora sollecitato |
 | 2 | Targeting MSFS 2024 (rilevamento versione, pause, INITPOSITION, tempo) | **a metà** — vedi sotto |
 | 3 | Allineamento e fluidità del replay | **scritta**; ASRA corretta dopo la prova in volo |
-| 4 | Fedeltà motori e suoni | da fare — **il pezzo più grosso rimasto** |
+| 4 | Fedeltà motori e suoni | **4a registrazione fatta**; 4b replay richiede prove nel simulatore |
 | 5 | Add-on del simulatore (servizio, installer, server locale, pannello) | **scritta**, provata fuori dal simulatore |
 | 6 | Documentazione e release | da fare |
 
@@ -471,28 +471,47 @@ la CI): altrimenti manca `Qt6Sql.dll` e il logbook non si apre.
 
 ---
 
-## Fase 4 — motori e suoni: cosa manca davvero
+## Fase 4 — motori e suoni
 
-`Model/EngineData` registra **solo posizioni di leve e interruttori**: manetta, elica, miscela,
-cowl flap, batteria, avviamento, combustione. Non c'è **nessun giro motore**: né `GENERAL ENG RPM`,
-né `TURB ENG N1`/`N2`, né temperature o pressioni. In replay il simulatore riceve le leve e ricalcola
-i motori con il proprio modello, che parte da uno stato diverso da quello registrato: da qui i
-motori e i suoni fuori fase.
+Il problema: `Model/EngineData` registrava **solo posizioni di leve e interruttori**. Non c'era
+**nessun giro motore**. In replay il simulatore riceveva le leve e ricalcolava i motori con il
+proprio modello, partendo da uno stato diverso da quello registrato: da qui motori e suoni fuori
+fase.
 
-Il lavoro si divide in due metà, molto diverse fra loro:
+Il lavoro si divide in due metà molto diverse fra loro.
 
-1. **Registrare** (dritta, verificabile fuori dal simulatore): aggiungere i giri a `EngineData`, ai
-   sotto-record SimConnect (`SimConnectEngineCore`/`All`/`Ai`/`Event`), alle colonne del logbook con
-   il marcatore `@migr` in coda a `LogbookMigration.sql`, a `SQLiteEngineDao`, e ai plugin di
-   import/export che toccano i motori. Quelle variabili sono in sola lettura per noi: si leggono e
-   basta.
-2. **Riprodurre** (la parte difficile, richiede prove *dentro* il simulatore): in MSFS i giri motore
-   **non sono scrivibili** come le posizioni delle leve — sono un'uscita del modello motore, non un
-   ingresso. Prima di scrivere codice serve stabilire sperimentalmente **quali variabili motore il
-   2024 accetta in scrittura** (`TURB ENG N1` indicizzata? `ENG ROTOR RPM`? `RECIP ENG RPM`?), e
-   cosa succede combinandole con le leve già inviate. È una fase di scoperta, non di
-   implementazione: scriverla adesso sulla base di variabili che potrebbero non essere scrivibili
-   vorrebbe dire consegnare codice che non si può provare.
+### 4a — Registrazione: **fatta**
+
+Si registrano `GENERAL ENG RPM` e `TURB ENG N1` per tutti e quattro i motori. Sono *uscite* del
+modello motore del simulatore, non ingressi, quindi per la convenzione di `SimVars.md` stanno in un
+sotto-record **`Info`**: dentro `EngineAll` — e quindi registrate — ma né in `EngineUser` né in
+`EngineAi`, e quindi **mai rimandate indietro**. Il replay è intatto.
+
+Registrare per prima questa metà è deliberato: è quella che **non si può aggiungere a posteriori**.
+Un volo registrato senza queste variabili non potrà mai essere riprodotto fedelmente, comunque
+finisca la parte di replay.
+
+Questo però ha un costo che andava pagato nello stesso momento. Il record dei motori è richiesto con
+`SIMCONNECT_DATA_REQUEST_FLAG_CHANGED`, e le leve stanno immobili per interi tratti di crociera:
+finora arrivava di rado. I giri non stanno mai fermi, quindi da adesso arriva **a ogni frame**.
+Senza contromisure una tabella rada sarebbe diventata da sessanta campioni al secondo, quasi tutti
+privi di informazione. `Model/EngineDecimation` applica la lezione della Fase 3: si conserva un
+campione quando dice qualcosa. Tutto ciò che è discreto — avviamento, combustione, batteria — è
+conservato **nell'istante in cui cambia**, perché sono i momenti che il replay deve azzeccare; una
+leva che si muove pure; i giri, essendo lisci, possono scostarsi fino a una soglia prima di costare
+una riga. Dieci minuti di crociera assestata costano un campione al secondo invece di 36 000, e un
+giro riprodotto non dista mai dal registrato più della soglia. Coperto da `EngineDecimationTest`.
+
+I logbook vecchi rileggono `null`, che diventa zero — ed è esattamente ciò che significa: nessun
+giro registrato.
+
+### 4b — Replay: da fare, e richiede il simulatore
+
+In MSFS i giri motore **non sono scrivibili** come le leve. Prima di scrivere codice serve
+stabilire sperimentalmente **quali variabili motore il 2024 accetta in scrittura**
+(`TURB ENG N1` indicizzata? `ENG ROTOR RPM`? `RECIP ENG RPM`?) e cosa succede combinandole con le
+leve già inviate. È una fase di *scoperta*: scriverla adesso su variabili che potrebbero non essere
+scrivibili vorrebbe dire consegnare codice che nessuno dei due può provare.
 
 Va anche affrontato il punto già annotato nella Fase 3: ricostruire lo stato dei motori dopo un seek
 senza rieseguire l'avviamento.
@@ -511,7 +530,9 @@ senza rieseguire l'avviamento.
 - **Le prove dentro il simulatore che restano**: registrazione, motori, suoni, seek, teletrasporto,
   e — per chiudere la Fase 1 — tornare al menu principale e chiudere il simulatore mentre Sky Dolly
   è connesso.
-- **Per la Fase 4**: stabilire quali variabili motore MSFS 2024 accetta in scrittura (vedi sopra).
+- **Per la Fase 4b**: stabilire quali variabili motore MSFS 2024 accetta in scrittura (vedi sopra).
+  Da adesso i giri **si registrano**, quindi una registrazione fatta oggi servirà per provare il
+  replay domani.
 - La decisione sul punto 2 dei problemi aperti (licenza / vendorizzazione di SimConnect).
 
 ---
