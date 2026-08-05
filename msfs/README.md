@@ -33,14 +33,27 @@ simulator. And it is the fallback: custom toolbar panels are a community techniq
 documented SDK feature, so a Sim Update can break the in-game route. The browser route depends on
 nothing but a TCP socket.
 
-## What is uncertain here
+## What registers the toolbar icon
 
-`html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.xml` is the part to be sceptical about. The
-simulator's mechanism for discovering third-party toolbar panels is not documented in the SDK; this
-descriptor follows what working add-ons appear to do. **It has not been confirmed inside MSFS 2024
-yet.** If the toolbar button does not appear after installing:
+`InGamePanels/InGamePanel_SkyDolly.spb`, and nothing else. It is a compiled binary; the source it
+is built from, and the reason it cannot be written by hand, are in
+[`../panel-project/README.md`](../panel-project/README.md).
 
-1. check that `layout.json` matches the files on disk;
+The first in-sim test was run without it - an XML descriptor sat in `html_ui/` instead, on the
+assumption that the simulator scanned that folder. It does not, and no shipped panel has such a
+file. Comparing this package against `fcr-embedded` and the twenty `fs-base-ingamepanels-*` packages
+inside MSFS 2024 shows the layout they all share, which is now the layout here:
+
+```
+InGamePanels/InGamePanel_<Name>.spb          <- the registration
+html_ui/InGamePanels/<Name>/<Name>.html      <- the panel itself
+html_ui/icons/toolbar/ICON_TOOLBAR_<X>.svg   <- the icon
+```
+
+If the button still does not appear after installing:
+
+1. check that `layout.json` matches the files on disk, sizes included - the `.spb` has to be listed
+   there too;
 2. check the Coherent debugger at `http://127.0.0.1:19999` with Developer Mode on, which lists the
    panels the simulator actually loaded;
 3. use `http://127.0.0.1:17285/` meanwhile - everything works there.

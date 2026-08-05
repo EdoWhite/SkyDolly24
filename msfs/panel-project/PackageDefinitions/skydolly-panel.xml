@@ -1,0 +1,30 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Builds only the panel descriptor, not the whole add-on package.
+
+     Everything else the add-on needs - the HTML, CSS, JavaScript and the toolbar icon - already
+     lives in ../../skydolly-panel/, which is what --install-addon copies into the Community folder
+     and what the Qt resource that serves http://127.0.0.1:17285/ is built from. Compiling those
+     files here as well would make a second copy of them, and the two would drift apart. So this
+     project produces the one file that cannot be written by hand, and it is copied next to them. -->
+<AssetPackage Name="skydolly-panel" Version="0.20.0">
+    <ItemSettings>
+        <ContentType>SPB</ContentType>
+        <Title>Sky Dolly Panel</Title>
+        <Manufacturer/>
+        <Creator>till213 / Sky Dolly</Creator>
+    </ItemSettings>
+    <Flags>
+        <VisibleInStore>false</VisibleInStore>
+        <CanBeReferenced>false</CanBeReferenced>
+    </Flags>
+    <AssetGroups>
+        <AssetGroup Name="skydolly-panel">
+            <Type>SPB</Type>
+            <Flags>
+                <FSXCompatibility>false</FSXCompatibility>
+            </Flags>
+            <AssetDir>PackageSources\</AssetDir>
+            <OutputDir>InGamePanels\</OutputDir>
+        </AssetGroup>
+    </AssetGroups>
+</AssetPackage>

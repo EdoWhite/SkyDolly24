@@ -1,0 +1,29 @@
+<?xml version="1.0" encoding="Windows-1252"?>
+<!-- Source for InGamePanels/InGamePanel_SkyDolly.spb, the file that puts the Sky Dolly icon in the
+     simulator's toolbar. Compiled by fspackagetool; see ../README.md.
+
+     This schema is not in the SDK documentation - Asobo has confirmed as much on the developer
+     forum - and the compiled .spb has its strings obfuscated, so it cannot be written by hand. The
+     shape below is the one used by the working third-party panels, and it matches what ships inside
+     MSFS 2024 itself (fcr-embedded, fs-base-ingamepanels-*).
+
+     The geometry is in percent of the screen, not pixels. Sky Dolly's panel is a transport with a
+     timeline under it: narrow, and tall enough for the flight list without covering the instruments.
+     Worth adjusting once it has been seen in the simulator. -->
+<SimBase.Document Type="InGamePanels" version="1,0">
+  <Filename>InGamePanel_SkyDolly.spb</Filename>
+  <InGamePanels.InGamePanelDefinition
+      id="PANEL_SKYDOLLY"
+      Name="SkyDolly"
+      url="html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.html"
+      icon="ICON_TOOLBAR_SKYDOLLY"
+      buttonVisible="true"
+      resizeDirections="Both"
+      minWidth="18"
+      minHeight="30"
+      defaultWidth="22"
+      defaultHeight="55"
+      defaultTop="20"
+      defaultRight="2">
+  </InGamePanels.InGamePanelDefinition>
+</SimBase.Document>
