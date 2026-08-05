@@ -336,6 +336,16 @@ void AbstractSkyConnect::startReplay(bool skipToStart, const InitialPosition &in
 
 void AbstractSkyConnect::stopReplay() noexcept
 {
+    // Releasing the freeze comes first, before anything else and unconditionally. Every step below
+    // can fail - the connection may already be gone, the plugin teardown may bail out half way -
+    // and an aircraft still frozen when that happens is stuck for the rest of the flight: the
+    // simulator keeps ignoring its own physics and the user has no way to get control back short of
+    // restarting the flight. Sending FREEZE_*_SET twice, or to an aircraft that was never frozen,
+    // costs nothing; leaving it frozen once costs the flight.
+    if (!onFreezeUserAircraft(false)) {
+        qWarning() << "AbstractSkyConnect::stopReplay: could not release the user aircraft freeze";
+    }
+
     setState(Connect::State::Connected);
     // Remember elapsed time since last replay start, in order to continue from
     // current timestamp
@@ -343,6 +353,9 @@ void AbstractSkyConnect::stopReplay() noexcept
     d->elapsedTimer.invalidate();
     d->simulationTimeUpdateTimer.stop();
     onStopReplay();
+    // Reconcile with the state that has just been set: in the replay modes that only freeze while
+    // paused this is a no-op, and in the normal mode it repeats the release above. It stays because
+    // it is what keeps the freeze a function of the state rather than of the call order
     updateUserAircraftFreeze();
     // Reset simulation rate
     sendSimulationEvent(SimulationEvent::SimulationRate, 1.0f);
