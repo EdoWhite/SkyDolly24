@@ -118,6 +118,21 @@ else()
     message(STATUS "IPO SUPPORT disabled for debug builds")
 endif()
 
+# Debug symbols for optimised builds. Without them a crash report is a list of raw addresses:
+# the minidump written by the crash handler cannot be turned back into function names, and neither
+# can the stack trace in the report next to it.
+#
+# /Z7 only emits the symbols, it does not change code generation; it is preferred over /Zi because
+# it puts them in the object files rather than in one shared database, which would serialise the
+# parallel build through mspdbsrv. /DEBUG does change the linker's defaults - it turns /OPT:REF and
+# /OPT:ICF off - so both are asked for explicitly, to keep the shipped binaries laid out exactly as
+# they were without symbols.
+if(MSVC AND NOT ("${CMAKE_BUILD_TYPE}" STREQUAL "Debug"))
+    add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/Z7>)
+    add_link_options(/DEBUG /OPT:REF /OPT:ICF)
+    message(STATUS "Debug symbols (PDB) enabled for the optimised build")
+endif()
+
 # Only enable auto-moccing for our own libraries and executables
 # (not for the third-party libraries above)
 set(CMAKE_AUTOUIC ON)

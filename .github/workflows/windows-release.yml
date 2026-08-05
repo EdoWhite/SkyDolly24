@@ -24,6 +24,7 @@ env:
   QT_VERSION: '6.8.0'
   BUILD_DIR: '${{ github.workspace }}/build'
   PACKAGE_DIR: '${{ github.workspace }}/package'
+  SYMBOLS_DIR: '${{ github.workspace }}/symbols'
 
 jobs:
   build:
@@ -146,8 +147,17 @@ jobs:
             "$pkg/Plugins/Connect/PathCreator.dll", `
             "$pkg/Plugins/Module/Template.dll"
           Get-ChildItem -Path $pkg -Filter '*Test.exe' | Remove-Item -Force
-          Get-ChildItem -Path $pkg -Filter '*.ilk' | Remove-Item -Force -ErrorAction SilentlyContinue
-          Get-ChildItem -Path $pkg -Filter '*.pdb' | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem -Path $pkg -Recurse -Filter '*.ilk' | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          # The symbols are kept, but out of the package: they are published as their own artifact
+          # below, because they are what turns the addresses in a user's crash report back into
+          # function names. -Recurse matters: the connect, module, flight and location plugins each
+          # have their own PDB in a sub-directory, and a non-recursive filter leaves them behind.
+          $symbols = '${{ env.SYMBOLS_DIR }}'
+          New-Item -ItemType Directory -Force -Path $symbols | Out-Null
+          Get-ChildItem -Path $pkg -Recurse -Filter '*.pdb' | ForEach-Object {
+            Move-Item -Path $_.FullName -Destination $symbols -Force -ErrorAction SilentlyContinue
+          }
 
           # The MSFS add-on: the panel package plus the scripts that register it with the
           # simulator. --install-addon looks for the package at Community/skydolly-panel next to
@@ -200,6 +210,16 @@ jobs:
         with:
           name: SkyDolly-windows-x64
           path: ${{ env.PACKAGE_DIR }}
+          if-no-files-found: error
+
+      # Kept apart from the package: a crash report is a list of raw addresses without these, and
+      # they have to be the ones from the very build the user is running
+      - name: Upload debug symbols
+        if: steps.simconnect.outputs.available == 'true'
+        uses: actions/upload-artifact@v6
+        with:
+          name: SkyDolly-windows-x64-symbols
+          path: ${{ env.SYMBOLS_DIR }}
           if-no-files-found: error
 
       # Deferred so that the artifact above is produced even when a test fails
