@@ -15,7 +15,7 @@ Documento di passaggio di consegne fra sessioni e fra macchine. Il piano complet
 | 1 | Crash del plugin SimConnect | scritta, compila, **l'app si connette**; i percorsi di crash non ancora sollecitati |
 | 1b | Log su file e crash handler Windows | scritta, **log verificato**; crash handler non ancora sollecitato |
 | 2 | Targeting MSFS 2024 (rilevamento versione, pause, INITPOSITION, tempo) | **a metà** — vedi sotto |
-| 3 | Allineamento e fluidità del replay | da fare |
+| 3 | Allineamento e fluidità del replay | **scritta**, provata solo fuori dal simulatore |
 | 4 | Fedeltà motori e suoni | da fare |
 | 5 | Add-on del simulatore (servizio, installer, server locale, pannello) | **scritta**, provata fuori dal simulatore |
 | 6 | Documentazione e release | da fare |
@@ -162,6 +162,34 @@ Da fare (il resto della Fase 2):
 
   Prima di queste modifiche entrambe le colonne rispondevano «no» per MSFS 2024.
 
+### Fase 3 — allineamento e fluidità del replay
+- **Posizione registrata a ogni frame** invece che a 1 Hz (`updateRequestPeriod`). Era la causa
+  vera dello stutter di [#184]: a velocità di crociera un secondo sono centinaia di metri, e la
+  spline doveva inventarsi tutto il percorso in mezzo mentre l'assetto accanto era campionato 60
+  volte tanto. Piano di volo e tempo di simulazione restano a 1 Hz, che è corretto.
+- **Decimazione adattiva in scrittura** (`Model/PositionDecimation`): si conserva un campione solo
+  se l'aereo è altrove rispetto a dove i due precedenti lo prevedevano, oltre mezzo metro, oppure
+  se è passato un secondo comunque. Dieci minuti di crociera sono 36 000 campioni e diventano meno
+  di 1200 righe; su una virata in salita la traccia decimata resta entro 5 metri da quella volata.
+- **Interpolazione dell'assetto su quaternioni** (`SkyMath::slerp` / `squad`, usata da
+  `Attitude::interpolate`). Va detto onestamente: misurata contro il codice precedente vale **meno
+  di un grado** (0.08° in virata dolce, 0.88° con campioni radi) e **zero** attraverso il wrap
+  0/360, che `interpolateHermite360` già gestiva. È una correzione di correttezza, non la causa
+  dello stutter. Ha però fatto emergere un bug reale: attraversando nord i quaternioni finivano in
+  emisferi opposti e i punti di controllo di `squad` producevano salti fino a 8°.
+- **Integratore ASRA azzerato e limitato**: `currentAltitudeOffset` accumulava per tutta la
+  sessione attraverso seek, riavvii e riconnessioni, senza reset né limite. Ora azzerato su
+  start/stop/seek e limitato a 50 piedi. Candidato diretto per [#155].
+- **Orologio di replay letto al frame**, non a ogni messaggio Windows: prima più frame nello stesso
+  dispatch venivano riprodotti allo stesso timestamp.
+
+Non fatto della Fase 3: collegare `SampleRate` all'option widget del plugin (la frequenza è quella
+dei frame, non configurabile), inserimenti in batch in `SQLiteAircraftDao`, e la ricostruzione dello
+stato motori sul seek senza rieseguire l'avviamento.
+
+[#155]: https://github.com/till213/SkyDolly/issues/155
+[#184]: https://github.com/till213/SkyDolly/issues/184
+
 ### Fase 5, verificata fuori dal simulatore
 - `ctest`: **14/14, exit 0** (aggiunti `HttpRequestTest` e `AddonInstallerTest`).
 - API provata contro MSFS 2024 in esecuzione: `/api/state` riporta il simulatore connesso,
@@ -205,6 +233,20 @@ principale e chiusura del simulatore (cioè i percorsi che la Fase 1 doveva rend
    Dettagli in [`msfs/README.md`](../../msfs/README.md).
 
 ---
+
+## Smart App Control
+
+Su questa macchina **Smart App Control è attivo** (`VerifiedAndReputablePolicyState = 1`).
+Blocca i binari appena linkati, perché non hanno reputazione nell'Intelligent Security Graph: per
+qualche minuto dopo la compilazione i test non partono e l'applicazione non riesce a caricare le
+proprie DLL (evento CodeIntegrity 3077). **Poi il blocco decade da solo** e tutto funziona.
+
+Quindi non serve disattivarlo — cosa peraltro irreversibile senza reinstallare Windows. Se subito
+dopo una build i test falliscono con `0xc0e90002` o `BAD_COMMAND`, aspettare e rieseguire.
+
+Nota per la Fase 6: la release ufficiale di Sky Dolly **non è firmata** (solo le DLL di Qt lo sono)
+e gira lo stesso, perché quei byte esatti hanno reputazione. Un pacchetto nuovo prodotto da noi non
+l'avrà: per distribuirlo servirà un certificato di code signing.
 
 ## Ambiente di sviluppo su questa macchina
 
