@@ -431,18 +431,34 @@ Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operati
   Where-Object Id -in 3033,3077 | Select-Object TimeCreated, Message
 ```
 
-Due cose imparate misurando invece che aspettando alla cieca:
+Tre cose imparate misurando invece che aspettando alla cieca:
 
 - **A essere bloccate sono le DLL, non gli eseguibili.** L'evento 3077 nomina il file preciso, ed è
   sempre della forma «il processo `XyzTest.exe` ha tentato di caricare `Model.dll`, che non
-  soddisfa i requisiti di firma». Basta quindi che una sola libreria condivisa sia stata ricompilata
-  perché *tutti* i test falliscano insieme: non è che siano rotti, è che nessuno riesce a caricare
-  la libreria. Se `Model.dll` è nuova, i 16 test falliscono tutti, e la lista dei falliti non dice
-  niente su di loro.
-- **Il blocco dura una quarantina di minuti**, non «qualche minuto» come scritto prima. Misurato due
-  volte sulla stessa macchina, e la prima esecuzione verde è arrivata circa 35-40 minuti dopo il
-  link. Ricompilare nel frattempo azzera il conteggio per il file ricompilato, quindi conviene
-  finire tutte le modifiche, fare **una** build, e poi aspettare una volta sola.
+  soddisfa i requisiti di firma». Il processo dunque **parte**: è il caricamento della libreria a
+  essere rifiutato. Basta quindi che una sola libreria condivisa sia stata ricompilata perché
+  *tutti* i test falliscano insieme — non sono rotti, è che nessuno riesce a caricare la libreria —
+  e la lista dei falliti non dice niente su di loro.
+- **La durata del blocco è imprevedibile, non «qualche minuto».** Misurata su questa macchina: una
+  `Model.dll` compilata alle 16:09 era di nuovo utilizzabile alle 16:45 (36 minuti); la successiva,
+  compilata alle 16:47, era **ancora bloccata dopo un'ora e quaranta**. Non è un timer: è un
+  verdetto di reputazione che arriva quando arriva. Quindi non si pianifica intorno a un'attesa
+  nota — si fanno tutte le modifiche, **una** build sola, e nel frattempo si lavora ad altro.
+- **Per verificare logica pura non serve aspettare.** Siccome è la DLL a essere bloccata e non
+  l'eseguibile, basta compilare gli stessi sorgenti in un binario **autonomo**, che linka solo Qt
+  (firmata, e quindi sempre caricabile). Così è stato verificato `EngineDecimationTest` — 11 casi su
+  11 — mentre `Model.dll` era ancora bloccata:
+
+  ```
+  moc test\ModelTest\src\EngineDecimationTest.h -o moc_EngineDecimationTest.cpp
+  cl /std:c++20 /EHsc /MD /O2 /DNDEBUG /DMODEL_EXPORT /Isrc\Model\include /Isrc\Model\include\Model ^
+     test\ModelTest\src\EngineDecimationTest.cpp moc_EngineDecimationTest.cpp ^
+     src\Model\src\EngineDecimation.cpp src\Model\src\EngineData.cpp ^
+     /link Qt6Core.lib Qt6Test.lib
+  ```
+
+  Vale per tutto ciò che non ha bisogno delle nostre DLL. Non sostituisce `ctest`, ma dice subito
+  se il codice è giusto invece di lasciare la domanda aperta per un'ora.
 
 Nota per la Fase 6: la release ufficiale di Sky Dolly **non è firmata** (solo le DLL di Qt lo sono)
 e gira lo stesso, perché quei byte esatti hanno reputazione. Un pacchetto nuovo prodotto da noi non
