@@ -229,21 +229,25 @@ namespace
             out << "#" << counter << " " << describeAddress(address);
 
             if (symbolsInitialised) {
-                std::array<char, sizeof(::SYMBOL_INFO) + MAX_SYM_NAME> storage {};
-                auto *symbol = reinterpret_cast<::SYMBOL_INFO *>(storage.data());
-                symbol->SizeOfStruct = sizeof(::SYMBOL_INFO);
+                // The wide variants throughout, spelled out rather than left to the UNICODE
+                // macros: SYMBOL_INFO maps to SYMBOL_INFOW but IMAGEHLP_LINE64 does not map to its
+                // wide twin, so the two names in the same call would disagree about their encoding
+                // and every symbol would come out as its first letter alone
+                std::array<char, sizeof(::SYMBOL_INFOW) + MAX_SYM_NAME * sizeof(wchar_t)> storage {};
+                auto *symbol = reinterpret_cast<::SYMBOL_INFOW *>(storage.data());
+                symbol->SizeOfStruct = sizeof(::SYMBOL_INFOW);
                 symbol->MaxNameLen = MAX_SYM_NAME;
                 DWORD64 displacement {0};
-                if (::SymFromAddr(process, frame.AddrPC.Offset, &displacement, symbol) != FALSE) {
-                    out << " in " << QString::fromLatin1(symbol->Name);
+                if (::SymFromAddrW(process, frame.AddrPC.Offset, &displacement, symbol) != FALSE) {
+                    out << " in " << QString::fromWCharArray(symbol->Name);
                     if (displacement != 0) {
                         out << "+0x" << QString::number(displacement, 16);
                     }
-                    ::IMAGEHLP_LINE64 line {};
-                    line.SizeOfStruct = sizeof(::IMAGEHLP_LINE64);
+                    ::IMAGEHLP_LINEW64 line {};
+                    line.SizeOfStruct = sizeof(::IMAGEHLP_LINEW64);
                     DWORD lineDisplacement {0};
-                    if (::SymGetLineFromAddr64(process, frame.AddrPC.Offset, &lineDisplacement, &line) != FALSE) {
-                        out << " at " << QString::fromLatin1(line.FileName) << ":" << line.LineNumber;
+                    if (::SymGetLineFromAddrW64(process, frame.AddrPC.Offset, &lineDisplacement, &line) != FALSE) {
+                        out << " at " << QString::fromWCharArray(line.FileName) << ":" << line.LineNumber;
                     }
                 }
             }
