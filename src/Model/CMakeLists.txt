@@ -23,6 +23,7 @@ target_sources(${LIBRARY_NAME}
         include/Model/TimeVariableData.h
         include/Model/Position.h src/Position.cpp
         include/Model/PositionData.h src/PositionData.cpp
+        include/Model/PositionDecimation.h src/PositionDecimation.cpp
         include/Model/AltitudeSensorData.h
         include/Model/Attitude.h src/Attitude.cpp
         include/Model/AttitudeData.h src/AttitudeData.cpp

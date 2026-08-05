@@ -50,6 +50,7 @@
 #include <Model/AircraftInfo.h>
 #include <Model/Position.h>
 #include <Model/PositionData.h>
+#include <Model/PositionDecimation.h>
 #include <Model/Attitude.h>
 #include <Model/AttitudeData.h>
 #include <Model/Engine.h>
@@ -726,13 +727,19 @@ void MSFSSimConnectPlugin::updateRecordingFrequency() noexcept
 void MSFSSimConnectPlugin::updateRequestPeriod(::SIMCONNECT_PERIOD period) noexcept
 {
     if (d->currentRequestPeriod != period) {
-        // We sample the position data only at 1 Hz, in order to "smoothen" the curve
-        // The flight plan and simulation time is also updated only every second
+        // The flight plan and the simulation time genuinely do not change faster than this
         ::SIMCONNECT_PERIOD oneSecondPeriod = period != ::SIMCONNECT_PERIOD_NEVER ? ::SIMCONNECT_PERIOD_SECOND : ::SIMCONNECT_PERIOD_NEVER;
+        // Position is sampled per frame, like the attitude. It used to be sampled once per second
+        // "in order to smoothen the curve", but a second is far too long to guess a turn across:
+        // the spline has to invent the path between two points that can be hundreds of metres
+        // apart, while the attitude beside it is recorded sixty times as often. The two then
+        // disagree, which is the stuttering, out-of-step replay reported in issue #184. Smoothing
+        // by throwing away the evidence cannot work; the samples that carry no information are
+        // dropped on the way to the logbook instead, where the error can be bounded.
         ::SimConnect_RequestDataOnSimObject(
             d->simConnectHandle, Enum::underly(SimConnectType::DataRequest::PositionAll),
             Enum::underly(SimConnectType::DataDefinition::PositionAll),
-            ::SIMCONNECT_OBJECT_ID_USER, oneSecondPeriod, ::SIMCONNECT_DATA_REQUEST_FLAG_CHANGED
+            ::SIMCONNECT_OBJECT_ID_USER, period, ::SIMCONNECT_DATA_REQUEST_FLAG_CHANGED
         );
         ::SimConnect_RequestDataOnSimObject(
             d->simConnectHandle, Enum::underly(SimConnectType::DataRequest::AttitudeAll),
@@ -1009,8 +1016,22 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
                 auto simConnectPositionAll = reinterpret_cast<const SimConnectPositionAll *>(&objectData->dwData);
                 PositionData positionData = simConnectPositionAll->toPositionData();
                 positionData.timestamp = skyConnect->getCurrentTimestamp();
-                userAircraft.getPosition().upsertLast(positionData);
-                dataStored = true;
+
+                // Now that position arrives once per frame rather than once per second, most
+                // samples say nothing the previous two did not already imply. Storing only the
+                // ones that do keeps the logbook close to its old size while the recorded track
+                // stays within half a metre of the flown one.
+                Position &position = userAircraft.getPosition();
+                const std::size_t count = position.count();
+                bool store {true};
+                if (count >= 2) {
+                    store = PositionDecimation::shouldStore(position[count - 2], position[count - 1],
+                                                            positionData);
+                }
+                if (store) {
+                    position.upsertLast(positionData);
+                    dataStored = true;
+                }
             }
             break;
         }
