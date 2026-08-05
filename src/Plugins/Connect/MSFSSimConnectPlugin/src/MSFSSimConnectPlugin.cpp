@@ -22,6 +22,7 @@
  * DEALINGS IN THE SOFTWARE.
  */
 #include <algorithm>
+#include <cmath>
 #include <memory>
 
 #include <cstdint>
@@ -89,9 +90,38 @@ namespace
     // Initial keyboard shortcut / action repeat interval [milliseconds]
     constexpr int InitialRepeatActionInterval {256};
 
-    // The largest runway alignment correction ASRA may accumulate [feet]. Generous against any
-    // real difference between a recorded touchdown and the terrain under it, and small enough that
-    // a runaway integrator cannot put the aircraft somewhere absurd.
+    // ASRA - Active Sending Runway Alignment.
+    //
+    // Replaying a landing puts the aircraft back where it was recorded, but the ground underneath
+    // it is the ground of *this* session: a different terrain level of detail, different scenery,
+    // or a third-party airport can sit a few feet higher or lower than it did during the recording.
+    // The wheels then either hover above the runway or disappear into it. PLANE ALT ABOVE GROUND
+    // MINUS CG measures precisely that discrepancy, and the correction below drives it to zero by
+    // shifting the replayed altitude.
+    //
+    // It is a damped proportional correction, and deliberately not an accumulation. The previous
+    // version subtracted the whole measurement on every frame - a loop gain of one - around a loop
+    // that has a frame or two of transport delay: an altitude sent now is only visible to the
+    // sensor one or two frames later. A gain of one with dead time in the loop does not settle, it
+    // oscillates, and against the +/- 50 ft limit that oscillation turned into a bang-bang that
+    // buried the aircraft in the runway and gave every touchdown a thump. A gain well below one is
+    // stable despite the delay: it removes about 15% of the remaining error per frame, so it
+    // settles in roughly twenty frames - a third of a second - and it cannot diverge.
+    constexpr double AlignmentGain {0.15};
+
+    // Corrections smaller than this are not worth making: the sensor is noisy at rest and a parked
+    // aircraft must not jitter [feet] (about 1.5 cm)
+    constexpr double AlignmentDeadBand {0.05};
+
+    // Once airborne there is no runway to align to, so whatever correction was earned on the ground
+    // fades out instead of being carried along for the rest of the flight. Per replay frame, so the
+    // correction is gone a couple of seconds after lift-off
+    constexpr double AlignmentDecayPerFrame {0.02};
+
+    // The largest runway alignment correction ASRA may apply [feet]. Generous against any real
+    // difference between a recorded touchdown and the terrain under it, and small enough that a
+    // sensor reading gone wrong cannot put the aircraft somewhere absurd. With the damped
+    // correction above this is a backstop rather than the working limit it used to be.
     constexpr double MaximumAltitudeOffset {50.0};
 }
 
@@ -131,15 +161,46 @@ struct SkyConnectPrivate
     double currentAltitudeOffset {currentAltitudeAboveGroundMinusCenterGravity};
     bool altitudeAboveGroundSensorEnabled {false};
 
-    // The correction is an integrator: every frame on the ground it accumulates the measured
-    // distance between the aircraft and the runway. That is only meaningful for the touchdown it
-    // is currently correcting. Carried across a seek, a restarted replay or a reconnection it
-    // becomes a standing altitude error that grows without limit - the aircraft ends up buried in
-    // the runway, or hovering above it.
+    // The correction belongs to the touchdown it is currently correcting. Carried across a seek, a
+    // restarted replay or a reconnection it becomes a standing altitude error applied to a runway
+    // the aircraft is no longer on.
     void resetAltitudeOffset() noexcept
     {
         currentAltitudeAboveGroundMinusCenterGravity = 0.0;
         currentAltitudeOffset = 0.0;
+    }
+
+    /*!
+     * Moves the runway alignment correction a fraction of the way towards cancelling \p
+     * altitudeAboveGroundMinusCenterGravity, the measured distance between the aircraft and the
+     * ground below it. Called once per replay frame while the aircraft is on the ground.
+     *
+     * See the note on ::AlignmentGain for why this is a damped correction rather than a sum.
+     */
+    void applyAltitudeAlignment(double altitudeAboveGroundMinusCenterGravity) noexcept
+    {
+        currentAltitudeAboveGroundMinusCenterGravity = altitudeAboveGroundMinusCenterGravity;
+        if (std::abs(altitudeAboveGroundMinusCenterGravity) > ::AlignmentDeadBand) {
+            currentAltitudeOffset -= ::AlignmentGain * altitudeAboveGroundMinusCenterGravity;
+            currentAltitudeOffset = std::clamp(currentAltitudeOffset,
+                                               -::MaximumAltitudeOffset, ::MaximumAltitudeOffset);
+        }
+    }
+
+    /*!
+     * Lets the runway alignment correction fade back to zero. Called once per replay frame while
+     * the aircraft is airborne, where there is no ground to align to and any correction still
+     * applied is simply an altitude error.
+     */
+    void decayAltitudeAlignment() noexcept
+    {
+        currentAltitudeAboveGroundMinusCenterGravity = 0.0;
+        if (currentAltitudeOffset != 0.0) {
+            currentAltitudeOffset *= 1.0 - ::AlignmentDecayPerFrame;
+            if (std::abs(currentAltitudeOffset) < ::AlignmentDeadBand) {
+                currentAltitudeOffset = 0.0;
+            }
+        }
     }
 };
 
@@ -452,6 +513,13 @@ bool MSFSSimConnectPlugin::sendAircraftData(std::int64_t currentTimestamp, TimeV
                     SimConnectPositionAndAttitudeAll simConnnectPositionAndAttitudeAll {positionData, attitudeData};
                     if (isUserAircraft) {
                         d->altitudeAboveGroundSensorEnabled = attitudeData.onGround;
+                        if (!attitudeData.onGround) {
+                            // Airborne: no runway to align to, so let go of the correction. Done
+                            // here rather than on a sensor sample because the sensor is requested
+                            // with SIMCONNECT_DATA_REQUEST_FLAG_CHANGED and therefore goes quiet
+                            // once the reading settles, whereas this runs on every replay frame
+                            d->decayAltitudeAlignment();
+                        }
                         SimConnectPositionAndAttitudeUser simConnectPositionAndAttitudeUser {simConnnectPositionAndAttitudeAll.user()};
                         // Adjust altitude (ASRA)
 #ifdef DEBUG
@@ -1284,15 +1352,7 @@ void CALLBACK MSFSSimConnectPlugin::dispatch(::SIMCONNECT_RECV *receivedData, [[
             if (!skyConnect->isInRecordingState()) {
                 const auto replaySensor = reinterpret_cast<const SimConnectReplaySensor *>(&objectData->dwData);
                 if (skyConnect->d->altitudeAboveGroundSensorEnabled) {
-                    skyConnect->d->currentAltitudeAboveGroundMinusCenterGravity = replaySensor->altitudeSensor.planeAltitudeAboveGroundMinusCenterGravity;
-                    skyConnect->d->currentAltitudeOffset -= skyConnect->d->currentAltitudeAboveGroundMinusCenterGravity;
-                    // Bounded, because this is an integrator with no feedback path of its own: a
-                    // sensor reading that is wrong, or a ground altitude the simulator has not
-                    // finished streaming, would otherwise walk the aircraft arbitrarily far from
-                    // where it was recorded. No real runway alignment needs more than this.
-                    skyConnect->d->currentAltitudeOffset =
-                        std::clamp(skyConnect->d->currentAltitudeOffset,
-                                   -::MaximumAltitudeOffset, ::MaximumAltitudeOffset);
+                    skyConnect->d->applyAltitudeAlignment(replaySensor->altitudeSensor.planeAltitudeAboveGroundMinusCenterGravity);
 #ifdef DEBUG
                     qDebug() << "ASRA enabled: altitude above ground:" << replaySensor->altitudeSensor.planeAltitudeAboveGroundMinusCenterGravity
                              << "current altitude offset: " << skyConnect->d->currentAltitudeOffset
