@@ -15,8 +15,8 @@ Documento di passaggio di consegne fra sessioni e fra macchine. Il piano complet
 | 1 | Crash del plugin SimConnect | scritta, compila, **l'app si connette**; i percorsi di crash non ancora sollecitati |
 | 1b | Log su file e crash handler Windows | scritta, **log verificato**; crash handler non ancora sollecitato |
 | 2 | Targeting MSFS 2024 (rilevamento versione, pause, INITPOSITION, tempo) | **a metà** — vedi sotto |
-| 3 | Allineamento e fluidità del replay | **scritta**, provata solo fuori dal simulatore |
-| 4 | Fedeltà motori e suoni | da fare |
+| 3 | Allineamento e fluidità del replay | **scritta**; ASRA corretta dopo la prova in volo |
+| 4 | Fedeltà motori e suoni | da fare — **il pezzo più grosso rimasto** |
 | 5 | Add-on del simulatore (servizio, installer, server locale, pannello) | **scritta**, provata fuori dal simulatore |
 | 6 | Documentazione e release | da fare |
 
@@ -218,26 +218,119 @@ Il replay è stato giudicato funzionante, senza segnalazione di scatti.
 
 Tre difetti osservati, in ordine di gravità:
 
-1. **Sky Dolly crasha premendo Stop.** Access violation `0xc0000005` con esecuzione all'indirizzo
-   `0x0` — salto attraverso un puntatore nullo. Il crash handler della Fase 1b ha funzionato:
-   minidump e report in `%LOCALAPPDATA%\till213\Sky Dolly\crash\`. Lo stack sotto è perso perché il
-   crash è a indirizzo zero; serve analizzare il minidump con i `.pdb` della build.
-   Percorso sospetto: `POST /api/command {"stop"}` → `SkyConnectManager::stop()` → `onStopReplay()`.
-   **Difesa da aggiungere comunque**: sciogliere il freeze dell'aereo (`FREEZE_*`) come *prima* cosa
-   nella sequenza di stop, così che un fallimento successivo non lasci l'aereo immobilizzato.
-2. **Un secondo dopo è crashato anche MSFS** — ma non per colpa nostra. Modulo in fallimento:
-   `RTSSHooks64.dll_unloaded`, cioè **RivaTuner Statistics Server** (overlay di MSI Afterburner),
-   chiamato dopo essere stato smappato. Sky Dolly non carica quella DLL. Il nesso con il crash di
-   Sky Dolly un secondo prima è plausibile ma non dimostrato. *Per isolare il problema: disattivare
-   l'overlay RTSS per MSFS e ripetere la prova.*
-3. **Le ruote sprofondano nell'asfalto e l'atterraggio dà un «colpo».** Importante: il plugin
-   provato (10:01:55) **conteneva già** la correzione ASRA (commit delle 10:00:38), quindi reset e
-   limite **non sono bastati**. Il difetto è nel disegno: ogni frame a terra esegue
-   `offset -= misura`, un integratore **senza retroazione** che non converge mai — finché la misura
-   non è esattamente zero continua a spingere l'aereo verso il basso, e il limite a 50 piedi ne
-   rallenta soltanto la discesa. Va rifatto come correzione smorzata che tende a zero.
+1. **Sky Dolly crasha premendo Stop.** Access violation `0xc0000005`. **Analizzato e risolto: non
+   era un difetto di Sky Dolly.** Vedi la sezione seguente.
+2. **Un secondo dopo è crashato anche MSFS.** Modulo in fallimento: `RTSSHooks64.dll_unloaded`,
+   cioè **RivaTuner Statistics Server** (overlay di MSI Afterburner). Stessa causa del punto 1.
+3. **Le ruote sprofondano nell'asfalto e l'atterraggio dà un «colpo».** Il plugin provato
+   (10:01:55) **conteneva già** la correzione ASRA (commit delle 10:00:38), quindi reset e limite
+   **non sono bastati**. Corretto: vedi «Correzione ASRA» sotto.
 
 Motori e suoni fuori fase: atteso, è la Fase 4 (non registriamo alcun RPM/N1).
+
+---
+
+## Il crash dello Stop: era RivaTuner, non Sky Dolly (2026-08-05)
+
+Il minidump è stato analizzato leggendolo direttamente (i `.pdb` non esistevano: la build Release
+era `/O2 /Ob2 /DNDEBUG`, senza alcuna informazione di debug — vedi sotto). Il risultato non lascia
+margini di dubbio.
+
+**Non è un salto a `0x0`.** Il report diceva `0x0` soltanto perché lo stack trace era sbagliato (vedi
+oltre). Il record dell'eccezione dice altro:
+
+| | |
+| --- | --- |
+| Codice | `0xc0000005`, parametri `8`, `0x180071150` → violazione di **esecuzione** (DEP) |
+| `RIP` | `0x0000000180071150` — **dentro nessun modulo caricato** |
+| `RAX` = `RSI` | `0x180071150` — il puntatore chiamato |
+| `RCX` / `RDX` / `R8` / `R9` | `0x10`, `0`, `0`, `0` |
+| `RBX` | `winmm.dll+0x2aee0` |
+| `[RSP]` | `winmm.dll+0x1f04` — l'indirizzo di ritorno |
+
+Il thread che ha fallito è un **thread di callback dei timer multimediali di `winmm`**
+(`ntdll!RtlUserThreadStart` → `kernel32!BaseThreadInitThunk` → `winmm+0xff92` → `winmm+0x283b` →
+`winmm+0x1f04`). Il thread principale era **fermo nell'event loop di Qt**: nessun frame di Sky Dolly
+sullo stack, da nessuna parte.
+
+Disassemblando `winmm.dll` attorno a `+0x1f04` si vede esattamente il dispatch del timer:
+
+```
+180001E5F: lea  rax,[18002AEE0h]   ; tabella dei timer   <- RBX al crash = winmm+0x2aee0
+180001E66: and  ebx,0Fh            ; slot = id & 15      (id=0x10 -> slot 0)
+180001ED7: mov  rsi,[rbx+8]        ; il puntatore alla callback
+180001EDB: call [LeaveCriticalSection]
+180001EFC: mov  rax,rsi
+180001EFF: call <thunk> -> jmp rax
+180001F04:                         ; <- esattamente [RSP] nel dump
+```
+
+**A chi appartiene `0x180071150`:**
+
+- `C:\Program Files (x86)\RivaTuner Statistics Server\RTSSHooks64.dll` ha `image base`
+  **`0x180000000`**, `size of image` `0x267000`, e — decisivo — **`DllCharacteristics = 0x0120`,
+  cioè senza `DYNAMICBASE`: niente ASLR**. Quella DLL si carica *sempre* al suo indirizzo preferito,
+  quindi `0x180071150` è il suo indirizzo reale a runtime.
+- Nella sua `.pdata`, `0x71150` è un **punto di ingresso di funzione esatto** (`[0x71150, 0x711ce)`,
+  126 byte — la taglia di una callback di timer).
+- Importa `timeSetEvent` e `timeKillEvent` da `WINMM.dll`.
+- Qt6Core è escluso: **è** compilata con ASLR (`0x4160`), era caricata a `0x7ffe99190000`, e a
+  `0x71150` non ha un inizio di funzione ma il mezzo di una.
+
+Fra tutti i moduli caricati nel processo, **solo Qt6Core importa `timeSetEvent`** — e non è lei.
+
+**Quindi:** RivaTuner inietta `RTSSHooks64.dll` in SkyDolly.exe, registra un timer multimediale
+(id 16, `dwUser` 0), e poi **si scarica senza chiamare `timeKillEvent`**. Al tick successivo il
+thread dei timer di `winmm` chiama codice che non è più mappato → violazione di esecuzione. Il
+filtro `SetUnhandledExceptionFilter` di Sky Dolly, che è per processo e non per thread, ha
+raccolto il crash di qualcun altro e se n'è preso la colpa. È lo **stesso difetto della stessa DLL**
+che un secondo dopo ha fatto cadere MSFS (`RTSSHooks64.dll_unloaded`).
+
+**Per l'utente:** non c'è niente da correggere in Sky Dolly per questo crash. Per non rivederlo,
+disattivare l'overlay RTSS (o escludere `SkyDolly.exe` e `FlightSimulator2024.exe` dai suoi
+profili). È anche la misura (b) chiesta per il difetto degli scatti, quindi una prova sola risponde
+a due domande.
+
+### Cosa è stato comunque corretto, grazie a questo crash
+
+- **Il freeze dell'aereo si scioglie per primo** nella sequenza di stop (`AbstractSkyConnect::
+  stopReplay`), prima di qualunque passo che possa fallire. Era l'ultima cosa, dopo il teardown del
+  plugin: se quello falliva, l'aereo restava immobilizzato per tutto il volo.
+- **Il crash report ora descrive il guasto vero.** Prima chiamava `StackTrace::generate()`, che
+  percorre lo stack di *chi la chiama* — cioè il filtro delle eccezioni — e non quello del thread
+  che ha fallito: nove frame di `UnhandledExceptionFilter` e `KiUserExceptionDispatcher`, più un
+  `0x0` inventato. Ora percorre il `CONTEXT` catturato al guasto con `StackWalk64`, e aggiunge
+  l'indirizzo che ha fallito, **il modulo che lo possiede**, il tipo di accesso (lettura, scrittura
+  o esecuzione) e il thread. Quando nessun modulo caricato possiede quell'indirizzo lo dice
+  esplicitamente — che è già una diagnosi: puntatore stantio, o DLL scaricata senza annullare una
+  callback. Questa riga sola avrebbe risposto in un secondo.
+- **La build Release produce i `.pdb`** (`/Z7` più `/DEBUG /OPT:REF /OPT:ICF`; `/Z7` e non `/Zi` per
+  non serializzare la build parallela attraverso `mspdbsrv`, e gli `/OPT:` espliciti perché
+  `/DEBUG` altrimenti li spegne e cambierebbe il layout dei binari). La CI li pubblica come
+  artifact separato: sono ciò che trasforma il report di un utente in nomi di funzione, e devono
+  essere quelli della build esatta che sta usando. Lo strip dal pacchetto ora è ricorsivo — ogni
+  plugin ha il suo, in una sotto-cartella, che il filtro non ricorsivo si lasciava dietro.
+
+### Correzione ASRA
+
+Il difetto era nella *forma* della correzione, non nella sua contabilità. A ogni frame a terra:
+`offset -= misura`, cioè **guadagno d'anello pari a uno** attorno a un anello che ha uno o due frame
+di ritardo di trasporto (l'altitudine inviata ora la vede il sensore uno o due frame dopo). Un
+guadagno di uno con del tempo morto nell'anello **non si assesta: oscilla**, e contro il limite di
+±50 piedi l'oscillazione diventava un bang-bang che piantava l'aereo nell'asfalto. Il limite non la
+fermava, decideva solo quanto in profondità.
+
+Ora è una **correzione proporzionale smorzata**: toglie circa il 15% dell'errore residuo per frame,
+si assesta in una ventina di frame (un terzo di secondo) in modo graduale invece che in un salto —
+ed è questo che toglie il colpo all'atterraggio — e con guadagno ben sotto uno è stabile nonostante
+il ritardo. Una banda morta evita che il rumore del sensore faccia tremare un aereo fermo, e il
+limite resta come rete di sicurezza.
+
+In più: la correzione veniva applicata **anche dopo il decollo**, perché era aggiornata solo a terra
+ma non azzerata mai, quindi un offset guadagnato in pista veniva portato fino a destinazione. Ora
+svanisce una volta in volo. Lo svanimento è fatto sul frame di replay e non sul campione del
+sensore, perché il sensore è richiesto con `SIMCONNECT_DATA_REQUEST_FLAG_CHANGED` e tace appena la
+lettura si stabilizza.
 
 ## Problemi aperti
 
@@ -253,15 +346,73 @@ Motori e suoni fuori fase: atteso, è la Fase 4 (non registriamo alcun RPM/N1).
    girare su un runner self-hosted con l'SDK installato.
 3. Su questa macchina la build locale non è vincolata a `3rdParty/SimConnect/`: `FindSimConnect`
    trova l'SDK installato.
-4. **La registrazione del pannello nella toolbar non è confermata.** I pannelli in-game di terze
-   parti non sono documentati nell'SDK: `SkyDollyPanel.xml` segue quello che sembrano fare gli
-   add-on funzionanti, ma **non è ancora stato caricato da MSFS 2024**. Se l'icona non compare:
-   controllare che `layout.json` corrisponda ai file su disco, e aprire il debugger Coherent su
-   `http://127.0.0.1:19999` (con Developer Mode attivo) che elenca i pannelli davvero caricati.
+4. **Il pannello in toolbar: causa individuata, serve l'SDK completo.** Confrontando il nostro
+   pacchetto con **tutti** i pannelli di Asobo installati (`fs-base-ingamepanels-*`, venti
+   pacchetti) la differenza è netta e sempre la stessa:
+
+   ```
+   fs-base-ingamepanels-metar/
+     InGamePanels/InGamePanel_Metar.spb          <-- LA REGISTRAZIONE
+     html_ui/InGamePanels/Metar/MetarPanel.{html,css,js}
+     layout.json, manifest.json
+
+   skydolly-panel/                               <-- il nostro
+     html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.{html,css,js,xml}
+     layout.json, manifest.json
+                                                 <-- manca del tutto InGamePanels/*.spb
+   ```
+
+   Il descrittore è **`InGamePanels/InGamePanel_<Nome>.spb`**, un binario AceXML. Il nostro
+   `html_ui/.../SkyDollyPanel.xml` **non è il meccanismo**: nessuno dei venti pacchetti di Asobo ha
+   un file simile, e il simulatore non lo guarda. Senza `.spb` non c'è voce in toolbar, punto.
+
+   Il `.spb` **non è scrivibile a mano**: le stringhe al suo interno sono offuscate, e i nomi degli
+   elementi AceXML non compaiono nemmeno come stringhe in chiaro dentro `FlightSimulator2024.exe`
+   (solo `SimBase.Document` e `AceXML Document`), il che vuol dire che il loader confronta forme
+   già offuscate. Va compilato da un sorgente XML con
+   `C:\MSFS 2024 SDK\Tools\bin\fspackagetool.exe`.
+
+   **Cosa manca per farlo:** lo schema del sorgente `InGamePanel_*.xml`. L'SDK installato su questa
+   macchina è **parziale** — `C:\MSFS 2024 SDK` contiene solo `Licenses`, `LodProcessingPresets`,
+   `ModelBehaviorDefs`, `Schemas`, `SharedAssets`, `SimConnect SDK`, `Tools`, `WASM`: **niente
+   `Samples`, niente `Documentation`**, e in `Schemas` ci sono solo schemi glTF. Su tutta la
+   macchina non esiste un solo `InGamePanel*.xml`. Reinstallare l'SDK includendo Samples e
+   Documentation dovrebbe fornire sia lo schema sia un progetto di esempio da copiare; a quel punto
+   la compilazione è un comando solo. Nota: `fspackagetool` costruisce **lanciando
+   `FlightSimulator2024.exe`** in modalità build, quindi non è un passo silenzioso.
+
    Nel frattempo `http://127.0.0.1:17285/` funziona e offre la stessa identica interfaccia.
    Dettagli in [`msfs/README.md`](../../msfs/README.md).
 
 ---
+
+## Reggerà ai Sim Update?
+
+Dipende dal pezzo, e la differenza è netta.
+
+**Regge (rischio basso).** Tutto ciò che è *funzione* — registrazione, replay, seek, freeze,
+posizione, luci, comandi di volo — passa da **SimConnect**, che è un'API versionata e mantenuta
+compatibile all'indietro: gira ancora oggi software scritto per FSX. Un Sim Update non la rompe.
+Lo stesso vale per l'avvio automatico via `EXE.xml`, che è documentato e non è cambiato fra MSFS
+2020 e 2024, e per il rilevamento della versione, che usa il nome (`SunRise`) con la major ≥ 12
+come ripiego proprio perché la build cambia a ogni update.
+
+**Rischio medio: le singole variabili ed eventi.** Nomi come `PLANE ALT ABOVE GROUND MINUS CG` o
+`FREEZE_ALTITUDE_SET` sono stabili da anni, ma Asobo ogni tanto deprecia o rinomina qualcosa. Se
+succede, si rompe *quella* funzione, non l'applicazione: dalla Fase 1 le eccezioni SimConnect sono
+decodificate e finiscono nel log anche in release, quindi si vede subito quale richiesta è stata
+rifiutata invece di avere un comportamento silenziosamente sbagliato. `ZULU_*_SET` è già sulla
+lista delle cose da verificare sul 2024.
+
+**Rischio alto: il pannello in toolbar.** È l'unico pezzo costruito su una tecnica **non
+documentata**: un binario `.spb` con stringhe offuscate, in un formato proprietario che Asobo può
+cambiare da un update all'altro senza dirlo a nessuno. Un Sim Update *può* far sparire l'icona.
+
+Questo è esattamente il motivo per cui la stessa identica interfaccia è servita anche su
+**`http://127.0.0.1:17285/`**, dagli stessi file: quella non dipende da nulla del simulatore —
+è una pagina servita dal nostro processo a un browser — e nessun Sim Update la può toccare. Se un
+giorno l'icona sparisce, l'add-on continua a funzionare e si perde solo la comodità di averlo
+dentro al gioco.
 
 ## Smart App Control
 
@@ -320,14 +471,47 @@ la CI): altrimenti manca `Qt6Sql.dll` e il logbook non si apre.
 
 ---
 
+## Fase 4 — motori e suoni: cosa manca davvero
+
+`Model/EngineData` registra **solo posizioni di leve e interruttori**: manetta, elica, miscela,
+cowl flap, batteria, avviamento, combustione. Non c'è **nessun giro motore**: né `GENERAL ENG RPM`,
+né `TURB ENG N1`/`N2`, né temperature o pressioni. In replay il simulatore riceve le leve e ricalcola
+i motori con il proprio modello, che parte da uno stato diverso da quello registrato: da qui i
+motori e i suoni fuori fase.
+
+Il lavoro si divide in due metà, molto diverse fra loro:
+
+1. **Registrare** (dritta, verificabile fuori dal simulatore): aggiungere i giri a `EngineData`, ai
+   sotto-record SimConnect (`SimConnectEngineCore`/`All`/`Ai`/`Event`), alle colonne del logbook con
+   il marcatore `@migr` in coda a `LogbookMigration.sql`, a `SQLiteEngineDao`, e ai plugin di
+   import/export che toccano i motori. Quelle variabili sono in sola lettura per noi: si leggono e
+   basta.
+2. **Riprodurre** (la parte difficile, richiede prove *dentro* il simulatore): in MSFS i giri motore
+   **non sono scrivibili** come le posizioni delle leve — sono un'uscita del modello motore, non un
+   ingresso. Prima di scrivere codice serve stabilire sperimentalmente **quali variabili motore il
+   2024 accetta in scrittura** (`TURB ENG N1` indicizzata? `ENG ROTOR RPM`? `RECIP ENG RPM`?), e
+   cosa succede combinandole con le leve già inviate. È una fase di scoperta, non di
+   implementazione: scriverla adesso sulla base di variabili che potrebbero non essere scrivibili
+   vorrebbe dire consegnare codice che non si può provare.
+
+Va anche affrontato il punto già annotato nella Fase 3: ricostruire lo stato dei motori dopo un seek
+senza rieseguire l'avviamento.
+
 ## Cosa serve dall'utente
 
-- **Installare l'add-on e dire se l'icona compare in toolbar.** Dalla cartella di build:
-  `build\bin\SkyDolly.exe --install-addon`, poi riavviare MSFS 2024. È l'unica verifica che non si
-  può fare da qui, ed è quella che dice se la Fase 5 è davvero finita.
-- **Tutte le prove dentro il simulatore**: registrazione, replay, motori, suoni, pannello. In
-  particolare, per chiudere la Fase 1, i tre passaggi che prima facevano crashare: entrare in volo,
-  tornare al menu principale, chiudere il simulatore mentre Sky Dolly è connesso.
+- **Disattivare l'overlay di RivaTuner** (RTSS) e rifare la prova. Risponde a due domande in una:
+  conferma la diagnosi del crash, ed è la misura (b) per gli scatti.
+- **Le due misure per gli scatti**, prima di toccare il campionamento:
+  (a) gli scatti ci sono anche con Sky Dolly **chiuso del tutto**?
+  (b) ci sono anche con l'overlay RTSS **disattivato**?
+  In replay il carico non è mai cambiato, quindi la Fase 3 probabilmente non c'entra.
+- **Reinstallare l'SDK di MSFS 2024 includendo Samples e Documentation**, che l'installazione
+  attuale non ha. Senza, lo schema del sorgente `InGamePanel_*.xml` non è ricavabile e l'icona in
+  toolbar non si può compilare (vedi problema aperto n. 4).
+- **Le prove dentro il simulatore che restano**: registrazione, motori, suoni, seek, teletrasporto,
+  e — per chiudere la Fase 1 — tornare al menu principale e chiudere il simulatore mentre Sky Dolly
+  è connesso.
+- **Per la Fase 4**: stabilire quali variabili motore MSFS 2024 accetta in scrittura (vedi sopra).
 - La decisione sul punto 2 dei problemi aperti (licenza / vendorizzazione di SimConnect).
 
 ---
