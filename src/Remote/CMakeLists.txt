@@ -41,7 +41,15 @@ set_target_properties(${LIBRARY_NAME}
 # which is the layout the release package ships. Mirror it in the build tree, so that installing
 # the add-on from a local build works exactly as it does from a downloaded package instead of
 # failing with "the panel package is missing".
+#
+# The staging directory is emptied first, because copy_directory only ever adds: a file deleted from
+# the source package would survive in the build tree, get installed into the Community folder, and
+# stay there. That is not hypothetical - it is how an obsolete panel descriptor outlived its own
+# deletion and had to be cleaned out of a real installation by hand. layout.json lists every file
+# the package contains and the simulator checks it, so a stale extra file is not harmless.
 add_custom_target(SkyDollyPanelPackage ALL
+    COMMAND ${CMAKE_COMMAND} -E rm -rf
+            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Community/skydolly-panel"
     COMMAND ${CMAKE_COMMAND} -E copy_directory
             "${CMAKE_SOURCE_DIR}/msfs/skydolly-panel"
             "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Community/skydolly-panel"

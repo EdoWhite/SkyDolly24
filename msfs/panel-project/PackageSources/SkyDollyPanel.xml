@@ -7,11 +7,16 @@
      shape below is the one used by the working third-party panels, and it matches what ships inside
      MSFS 2024 itself (fcr-embedded, fs-base-ingamepanels-*).
 
-     The geometry is in percent of the screen, not pixels. Sky Dolly's panel is a transport with a
-     timeline under it: narrow, and tall enough for the flight list without covering the instruments.
-     Worth adjusting once it has been seen in the simulator. -->
+     The geometry is in percent of the screen, not pixels. Confirmed by decompiling the output: the
+     numbers below come back as 18.0, 30.0, 22.0, 55.0, 20.0 and 2.0 floats, the same shape as the
+     45.0 and 15.0 in the simulator's own panels. Sky Dolly's panel is a transport with a timeline
+     under it: narrow, and tall enough for the flight list without covering the instruments. Worth
+     adjusting once it has been seen in the simulator.
+
+     Note that the name of the compiled file comes from the name of *this* file, not from the
+     Filename element below, which the tool appears to ignore. The two are kept in step by hand. -->
 <SimBase.Document Type="InGamePanels" version="1,0">
-  <Filename>InGamePanel_SkyDolly.spb</Filename>
+  <Filename>SkyDollyPanel.spb</Filename>
   <InGamePanels.InGamePanelDefinition
       id="PANEL_SKYDOLLY"
       Name="SkyDolly"

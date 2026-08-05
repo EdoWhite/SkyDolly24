@@ -1,4 +1,4 @@
-{
+﻿{
     "content":  [
                     {
                         "path":  "html_ui/icons/toolbar/ICON_TOOLBAR_SKYDOLLY.svg",
@@ -19,6 +19,11 @@
                         "path":  "html_ui/InGamePanels/SkyDollyPanel/SkyDollyPanel.js",
                         "size":  12910,
                         "date":  134299831061153195
+                    },
+                    {
+                        "path":  "InGamePanels/SkyDollyPanel.spb",
+                        "size":  669,
+                        "date":  134304266770000001
                     }
                 ]
 }

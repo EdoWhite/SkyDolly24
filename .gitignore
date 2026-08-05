@@ -66,3 +66,8 @@ build
 # Generated files
 src/SkyDolly/res/SkyDolly.rc
 src/SkyDolly/res/SkyDolly.exe.manifest
+
+# fspackagetool build output: the compiled descriptor is committed under
+# msfs/skydolly-panel/InGamePanels/, the intermediate tree is not
+msfs/panel-project/Packages/
+msfs/panel-project/_Temp/

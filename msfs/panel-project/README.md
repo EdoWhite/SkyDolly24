@@ -35,18 +35,38 @@ so do not run this while flying.
 "C:\MSFS 2024 SDK\Tools\bin\fspackagetool.exe" SkyDollyPanel.xml -nopause
 ```
 
-The output lands in `Packages\skydolly-panel\InGamePanels\`. Copy the `.spb` next to the rest of the
-add-on and record it in the layout:
+It prints almost nothing; `_Temp\_RPTErrors.xml` is where it says whether anything went wrong. The
+output lands in `Packages\skydolly-panel\InGamePanels\SkyDollyPanel.spb` - note the name comes from
+the name of the source file in `PackageSources\`, not from the `Filename` element inside it.
 
-```
-copy Packages\skydolly-panel\InGamePanels\InGamePanel_SkyDolly.spb ..\skydolly-panel\InGamePanels\
-```
+Copy it next to the rest of the add-on, then regenerate the layout from what is on disk, because
+the simulator checks the size of every file it lists and ignores one that does not match:
 
-`skydolly-panel/layout.json` then needs an entry for it, with the file's real size - the simulator
-checks that, and a wrong size makes it ignore the file.
+```powershell
+$pkg = '..\skydolly-panel'
+Copy-Item Packages\skydolly-panel\InGamePanels\SkyDollyPanel.spb "$pkg\InGamePanels\" -Force
+$entries = Get-ChildItem $pkg -Recurse -File |
+    Where-Object { $_.Name -notin @('layout.json','manifest.json') } | ForEach-Object {
+        [pscustomobject]@{
+            path = $_.FullName.Replace("$((Resolve-Path $pkg).Path)\",'').Replace('\','/')
+            size = $_.Length
+            date = $_.LastWriteTimeUtc.ToFileTimeUtc()
+        }
+    }
+[pscustomobject]@{ content = @($entries) } | ConvertTo-Json -Depth 4 |
+    Set-Content "$pkg\layout.json" -Encoding utf8
+```
 
 **The built `.spb` is committed** to `skydolly-panel/InGamePanels/`. Users installing the add-on do
 not have the SDK, and this file changes only when the panel is renamed, moved or resized.
+
+## Checking the output without the simulator
+
+The strings inside are obfuscated but the structure is not: it is a flat list of
+`<uint32 property><uint32 length><bytes>` records, with string lengths including their terminator
+and numbers stored as little-endian floats. That is enough to confirm a build did what was asked
+without starting MSFS - the descriptor here decompiles to a 14+1 byte id, a 53+1 byte url, a 21+1
+byte icon name, and the floats 18, 30, 22, 55, 20, 2.
 
 ## If the icon still does not appear
 
