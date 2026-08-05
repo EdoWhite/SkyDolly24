@@ -32,18 +32,31 @@ set(_sc_root "")
 
 # Accepts the first candidate that provides all three files: the header to compile against, the
 # import library to link and the DLL to run against. A partial SDK is treated as no SDK.
-macro(_sky_try_simconnect_root description root sdk_version)
-    if(NOT SimConnect_FOUND AND NOT "${root}" STREQUAL "")
-        if(EXISTS "${root}/include/SimConnect.h"
-           AND EXISTS "${root}/lib/SimConnect.lib"
-           AND EXISTS "${root}/lib/SimConnect.dll")
-            set(SimConnect_FOUND TRUE)
-            set(SimConnect_SOURCE "${description}")
-            set(SimConnect_SDK_VERSION "${sdk_version}")
-            set(_sc_root "${root}")
-        endif()
+#
+# A function rather than a macro on purpose. Macro arguments are substituted as literal text before
+# the body is parsed, so a Windows path arriving from the environment - MSFS2024_SDK is documented
+# as the way to point at a relocated SDK, and the installer writes it with backslashes - turns
+# "C:\MSFS 2024 SDK" into an invalid escape sequence and the configure step dies with a syntax
+# error inside this file. Function arguments are ordinary variables and are never re-parsed.
+# Results have to be lifted into the caller's scope explicitly, which is what PARENT_SCOPE does.
+function(_sky_try_simconnect_root description root sdk_version)
+    if(SimConnect_FOUND OR "${root}" STREQUAL "")
+        return()
     endif()
-endmacro()
+    # Accept either separator, whatever the environment variable happens to carry, and drop any
+    # trailing separator so that the paths below do not end up with a doubled one
+    file(TO_CMAKE_PATH "${root}" _sc_candidate)
+    string(REGEX REPLACE "/+$" "" _sc_candidate "${_sc_candidate}")
+
+    if(EXISTS "${_sc_candidate}/include/SimConnect.h"
+       AND EXISTS "${_sc_candidate}/lib/SimConnect.lib"
+       AND EXISTS "${_sc_candidate}/lib/SimConnect.dll")
+        set(SimConnect_FOUND TRUE PARENT_SCOPE)
+        set(SimConnect_SOURCE "${description}" PARENT_SCOPE)
+        set(SimConnect_SDK_VERSION "${sdk_version}" PARENT_SCOPE)
+        set(_sc_root "${_sc_candidate}" PARENT_SCOPE)
+    endif()
+endfunction()
 
 _sky_try_simconnect_root("SIMCONNECT_ROOT" "${SIMCONNECT_ROOT}" "unknown")
 if(DEFINED ENV{MSFS2024_SDK})

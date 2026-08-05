@@ -36,3 +36,16 @@ set_target_properties(${LIBRARY_NAME}
         VERSION ${PROJECT_VERSION}
         SOVERSION ${PROJECT_VERSION_MAJOR}
 )
+
+# --install-addon looks for the MSFS package at Community/skydolly-panel next to the executable,
+# which is the layout the release package ships. Mirror it in the build tree, so that installing
+# the add-on from a local build works exactly as it does from a downloaded package instead of
+# failing with "the panel package is missing".
+add_custom_target(SkyDollyPanelPackage ALL
+    COMMAND ${CMAKE_COMMAND} -E copy_directory
+            "${CMAKE_SOURCE_DIR}/msfs/skydolly-panel"
+            "${CMAKE_RUNTIME_OUTPUT_DIRECTORY}/Community/skydolly-panel"
+    COMMENT "Staging the MSFS panel package into the build tree"
+    VERBATIM
+)
+add_dependencies(${LIBRARY_NAME} SkyDollyPanelPackage)
