@@ -210,6 +210,35 @@ principale e chiusura del simulatore (cioè i percorsi che la Fase 1 doveva rend
 
 ---
 
+## Prima prova in volo (2026-08-05) — risultati
+
+L'add-on è stato installato e provato dentro MSFS 2024. `EXE.xml` funziona: **il simulatore avvia
+Sky Dolly da solo** con `--engine`. Il pannello in toolbar **non compare** (vedi problemi aperti).
+Il replay è stato giudicato funzionante, senza segnalazione di scatti.
+
+Tre difetti osservati, in ordine di gravità:
+
+1. **Sky Dolly crasha premendo Stop.** Access violation `0xc0000005` con esecuzione all'indirizzo
+   `0x0` — salto attraverso un puntatore nullo. Il crash handler della Fase 1b ha funzionato:
+   minidump e report in `%LOCALAPPDATA%\till213\Sky Dolly\crash\`. Lo stack sotto è perso perché il
+   crash è a indirizzo zero; serve analizzare il minidump con i `.pdb` della build.
+   Percorso sospetto: `POST /api/command {"stop"}` → `SkyConnectManager::stop()` → `onStopReplay()`.
+   **Difesa da aggiungere comunque**: sciogliere il freeze dell'aereo (`FREEZE_*`) come *prima* cosa
+   nella sequenza di stop, così che un fallimento successivo non lasci l'aereo immobilizzato.
+2. **Un secondo dopo è crashato anche MSFS** — ma non per colpa nostra. Modulo in fallimento:
+   `RTSSHooks64.dll_unloaded`, cioè **RivaTuner Statistics Server** (overlay di MSI Afterburner),
+   chiamato dopo essere stato smappato. Sky Dolly non carica quella DLL. Il nesso con il crash di
+   Sky Dolly un secondo prima è plausibile ma non dimostrato. *Per isolare il problema: disattivare
+   l'overlay RTSS per MSFS e ripetere la prova.*
+3. **Le ruote sprofondano nell'asfalto e l'atterraggio dà un «colpo».** Importante: il plugin
+   provato (10:01:55) **conteneva già** la correzione ASRA (commit delle 10:00:38), quindi reset e
+   limite **non sono bastati**. Il difetto è nel disegno: ogni frame a terra esegue
+   `offset -= misura`, un integratore **senza retroazione** che non converge mai — finché la misura
+   non è esattamente zero continua a spingere l'aereo verso il basso, e il limite a 50 piedi ne
+   rallenta soltanto la discesa. Va rifatto come correzione smorzata che tende a zero.
+
+Motori e suoni fuori fase: atteso, è la Fase 4 (non registriamo alcun RPM/N1).
+
 ## Problemi aperti
 
 1. **`3rdParty/SimConnect/` è vuota.** Senza i tre file dell'SDK la CI salta il plugin di
