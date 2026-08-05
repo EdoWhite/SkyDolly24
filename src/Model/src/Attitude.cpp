@@ -35,11 +35,6 @@
 #include "AttitudeData.h"
 #include "Attitude.h"
 
-namespace
-{
-constexpr double Tension = 0.0;
-}
-
 // PUBLIC
 
 Attitude::Attitude(const AircraftInfo &aircraftInfo) noexcept
@@ -61,14 +56,22 @@ const AttitudeData &Attitude::interpolate(std::int64_t timestamp, TimeVariableDa
             tn = SkySearch::normaliseTimestamp(*p1, *p2, adjustedTimestamp);
         }
         if (p1 != nullptr) {
-            // Aircraft attitude
-
-            // Pitch: [-90, 90] - no discontinuity at +/- 90
-            m_currentData.pitch = SkyMath::interpolateHermite(p0->pitch, p1->pitch, p2->pitch, p3->pitch, tn, ::Tension);
-            // Bank: [-180, 180] - discontinuity at +/- 180
-            m_currentData.bank  = SkyMath::interpolateHermite180(p0->bank, p1->bank, p2->bank, p3->bank, tn, ::Tension);
-            // Heading: [0, 360] - discontinuity at 0/360
-            m_currentData.trueHeading = SkyMath::interpolateHermite360(p0->trueHeading, p1->trueHeading, p2->trueHeading, p3->trueHeading, tn, ::Tension);
+            // Aircraft attitude.
+            //
+            // Pitch, bank and heading are one rotation, not three independent numbers. They used to
+            // be interpolated as three separate cubic splines, which lets the intermediate
+            // attitudes leave the path actually flown - worst exactly where all three change at
+            // once, which is a turn, and visible as the aircraft rocking about its own axis while
+            // the recording did no such thing. Interpolating on the unit sphere removes that by
+            // construction, and takes the wrap at 0/360 and +/-180 with it, since a quaternion has
+            // no discontinuity to wrap around.
+            const SkyMath::Quaternion q0 = SkyMath::quaternionFromEuler(p0->pitch, p0->bank, p0->trueHeading);
+            const SkyMath::Quaternion q1 = SkyMath::quaternionFromEuler(p1->pitch, p1->bank, p1->trueHeading);
+            const SkyMath::Quaternion q2 = SkyMath::quaternionFromEuler(p2->pitch, p2->bank, p2->trueHeading);
+            const SkyMath::Quaternion q3 = SkyMath::quaternionFromEuler(p3->pitch, p3->bank, p3->trueHeading);
+            const SkyMath::Quaternion interpolated = SkyMath::squad(q0, q1, q2, q3, tn);
+            SkyMath::eulerFromQuaternion(interpolated, m_currentData.pitch, m_currentData.bank,
+                                         m_currentData.trueHeading);
 
             // Velocity
             m_currentData.velocityBodyX = SkyMath::interpolateLinear(p1->velocityBodyX, p2->velocityBodyX, tn);

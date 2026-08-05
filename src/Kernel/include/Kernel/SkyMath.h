@@ -1,4 +1,4 @@
-/**
+﻿/**
  * Sky Dolly - The Black Sheep for Your Flight Recordings
  *
  * Copyright (c) 2020 - 2025 Oliver Knoll
@@ -27,6 +27,7 @@
 #include <algorithm>
 #include <limits>
 #include <utility>
+#include <cmath>
 #include <cstdint>
 #include <cstdlib>
 #include <exception>
@@ -518,8 +519,8 @@ namespace SkyMath
      * Returns the relative position from the starting \p position,
      * given the \p bearing and geodesic \p distance.
      *
-     * sinphi2    = sinphi1⋅cosδ + cosphi1⋅sinδ⋅costheta
-     * tanΔlambda = sintheta⋅sinδ⋅cosphi1 / cosδ−sinphi1⋅sinphi2
+     * sinphi2    = sinphi1â‹…cosÎ´ + cosphi1â‹…sinÎ´â‹…costheta
+     * tanÎ”lambda = sinthetaâ‹…sinÎ´â‹…cosphi1 / cosÎ´âˆ’sinphi1â‹…sinphi2
      *
      * \param position
      *        the Coordinate of the position [degrees]
@@ -683,6 +684,252 @@ namespace SkyMath
             return 1;
         }
         return n - (n >> 1);
+    }
+
+    // Attitude interpolation
+    //
+    // Pitch, bank and heading describe one rotation, not three independent numbers. Interpolating
+    // them separately - which is what three Hermite splines amount to - lets the intermediate
+    // attitudes leave the path the aircraft actually flew: the error is worst exactly where the
+    // three angles change together, which is a turn, and it shows up as the aircraft rocking about
+    // its own axis while the recording did no such thing. Converting to a quaternion, interpolating
+    // there and converting back removes the problem by construction, and takes the wrap at 0/360
+    // and +/-180 with it, since a quaternion has no discontinuity to wrap.
+    //
+    // Storage stays in Euler angles: that is what the simulator sends and expects, and what the
+    // logbook already holds.
+
+    /*!
+     * A unit quaternion, in the order used throughout this file.
+     */
+    struct Quaternion
+    {
+        double w {1.0};
+        double x {0.0};
+        double y {0.0};
+        double z {0.0};
+    };
+
+    inline Quaternion multiply(const Quaternion &p, const Quaternion &q) noexcept
+    {
+        return {
+            p.w * q.w - p.x * q.x - p.y * q.y - p.z * q.z,
+            p.w * q.x + p.x * q.w + p.y * q.z - p.z * q.y,
+            p.w * q.y - p.x * q.z + p.y * q.w + p.z * q.x,
+            p.w * q.z + p.x * q.y - p.y * q.x + p.z * q.w
+        };
+    }
+
+    inline Quaternion conjugate(const Quaternion &q) noexcept
+    {
+        return {q.w, -q.x, -q.y, -q.z};
+    }
+
+    inline Quaternion normalise(const Quaternion &q) noexcept
+    {
+        const double length = std::sqrt(q.w * q.w + q.x * q.x + q.y * q.y + q.z * q.z);
+        if (length < std::numeric_limits<double>::epsilon()) {
+            return {};
+        }
+        return {q.w / length, q.x / length, q.y / length, q.z / length};
+    }
+
+    inline double dot(const Quaternion &p, const Quaternion &q) noexcept
+    {
+        return p.w * q.w + p.x * q.x + p.y * q.y + p.z * q.z;
+    }
+
+    /*!
+     * Converts an attitude given in degrees into a unit quaternion.
+     *
+     * The rotation order is the aerospace convention: heading about the vertical axis first, then
+     * pitch, then bank.
+     *
+     * \param pitch
+     *        the pitch angle [degrees]
+     * \param bank
+     *        the bank angle [degrees]
+     * \param trueHeading
+     *        the true heading [degrees]
+     */
+    inline Quaternion quaternionFromEuler(double pitch, double bank, double trueHeading) noexcept
+    {
+        const double halfPitch = Convert::degreesToRadians(pitch) / 2.0;
+        const double halfBank = Convert::degreesToRadians(bank) / 2.0;
+        const double halfHeading = Convert::degreesToRadians(trueHeading) / 2.0;
+
+        const double cp = std::cos(halfPitch);
+        const double sp = std::sin(halfPitch);
+        const double cb = std::cos(halfBank);
+        const double sb = std::sin(halfBank);
+        const double ch = std::cos(halfHeading);
+        const double sh = std::sin(halfHeading);
+
+        return {
+            ch * cp * cb + sh * sp * sb,
+            ch * cp * sb - sh * sp * cb,
+            ch * sp * cb + sh * cp * sb,
+            sh * cp * cb - ch * sp * sb
+        };
+    }
+
+    /*!
+     * Converts a unit quaternion back into pitch, bank and true heading, in degrees.
+     *
+     * The inverse of #quaternionFromEuler: heading is returned in [0, 360[, bank in [-180, 180]
+     * and pitch in [-90, 90].
+     */
+    inline void eulerFromQuaternion(const Quaternion &quaternion, double &pitch, double &bank,
+                                    double &trueHeading) noexcept
+    {
+        const Quaternion q = normalise(quaternion);
+
+        // Bank
+        const double sinBankCosPitch = 2.0 * (q.w * q.x + q.y * q.z);
+        const double cosBankCosPitch = 1.0 - 2.0 * (q.x * q.x + q.y * q.y);
+        bank = Convert::radiansToDegrees(std::atan2(sinBankCosPitch, cosBankCosPitch));
+
+        // Pitch: clamped, because a value marginally outside [-1, 1] from rounding would make
+        // std::asin return NaN and take the whole attitude with it
+        const double sinPitch = std::clamp(2.0 * (q.w * q.y - q.z * q.x), -1.0, 1.0);
+        pitch = Convert::radiansToDegrees(std::asin(sinPitch));
+
+        // Heading
+        const double sinHeadingCosPitch = 2.0 * (q.w * q.z + q.x * q.y);
+        const double cosHeadingCosPitch = 1.0 - 2.0 * (q.y * q.y + q.z * q.z);
+        trueHeading = Convert::radiansToDegrees(std::atan2(sinHeadingCosPitch, cosHeadingCosPitch));
+        if (trueHeading < 0.0) {
+            trueHeading += 360.0;
+        } else if (trueHeading >= 360.0) {
+            trueHeading -= 360.0;
+        }
+    }
+
+    /*!
+     * Spherical linear interpolation between the attitudes \p q0 and \p q1.
+     *
+     * \param q0
+     *        the attitude at \p mu = 0
+     * \param q1
+     *        the attitude at \p mu = 1
+     * \param mu
+     *        the normalised interpolation position, in [0, 1]
+     * \return the interpolated attitude, taking the shorter of the two ways round
+     */
+    inline Quaternion slerp(const Quaternion &q0, const Quaternion &q1, double mu) noexcept
+    {
+        Quaternion a = normalise(q0);
+        Quaternion b = normalise(q1);
+
+        // q and -q describe the same attitude, so flipping one of them when they point away from
+        // each other is what keeps the interpolation from taking the long way round the sphere
+        double cosTheta = dot(a, b);
+        if (cosTheta < 0.0) {
+            b = {-b.w, -b.x, -b.y, -b.z};
+            cosTheta = -cosTheta;
+        }
+
+        // Nearly parallel: sin(theta) goes to zero and the general formula loses all its
+        // significant digits, while plain linear interpolation is accurate to well below what any
+        // attitude is measured to
+        constexpr double ParallelThreshold {0.9995};
+        if (cosTheta > ParallelThreshold) {
+            return normalise({
+                a.w + mu * (b.w - a.w),
+                a.x + mu * (b.x - a.x),
+                a.y + mu * (b.y - a.y),
+                a.z + mu * (b.z - a.z)
+            });
+        }
+
+        const double theta = std::acos(std::clamp(cosTheta, -1.0, 1.0));
+        const double sinTheta = std::sin(theta);
+        const double scale0 = std::sin((1.0 - mu) * theta) / sinTheta;
+        const double scale1 = std::sin(mu * theta) / sinTheta;
+
+        return {
+            scale0 * a.w + scale1 * b.w,
+            scale0 * a.x + scale1 * b.x,
+            scale0 * a.y + scale1 * b.y,
+            scale0 * a.z + scale1 * b.z
+        };
+    }
+
+    /*!
+     * Interpolates the attitude between \p q1 and \p q2 with the neighbouring samples \p q0 and
+     * \p q3 shaping the curve, the spherical equivalent of the cubic interpolation used for the
+     * other channels.
+     *
+     * Plain #slerp would be correct but only continuous in value, not in rate: at every sample the
+     * angular velocity would jump. That is invisible at frame rate and obvious on an imported
+     * flight plan whose points are minutes apart, so the cubic form is what the attitude actually
+     * uses.
+     *
+     * \param q0
+     *        the sample before \p q1
+     * \param q1
+     *        the attitude at \p mu = 0
+     * \param q2
+     *        the attitude at \p mu = 1
+     * \param q3
+     *        the sample after \p q2
+     * \param mu
+     *        the normalised interpolation position, in [0, 1]
+     */
+    inline Quaternion squad(const Quaternion &q0, const Quaternion &q1, const Quaternion &q2,
+                            const Quaternion &q3, double mu) noexcept
+    {
+        // The control points that bend the curve towards the neighbours, the spherical counterpart
+        // of the tangents a Hermite spline computes from the same four samples
+        const auto controlPoint = [](const Quaternion &previous, const Quaternion &current,
+                                     const Quaternion &next) noexcept -> Quaternion {
+            const Quaternion inverse = conjugate(normalise(current));
+            const auto logarithm = [](const Quaternion &q) noexcept -> Quaternion {
+                const double vectorLength = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z);
+                if (vectorLength < std::numeric_limits<double>::epsilon()) {
+                    return {0.0, 0.0, 0.0, 0.0};
+                }
+                const double angle = std::atan2(vectorLength, q.w);
+                const double scale = angle / vectorLength;
+                return {0.0, q.x * scale, q.y * scale, q.z * scale};
+            };
+            const auto exponential = [](const Quaternion &q) noexcept -> Quaternion {
+                const double angle = std::sqrt(q.x * q.x + q.y * q.y + q.z * q.z);
+                if (angle < std::numeric_limits<double>::epsilon()) {
+                    return {};
+                }
+                const double scale = std::sin(angle) / angle;
+                return {std::cos(angle), q.x * scale, q.y * scale, q.z * scale};
+            };
+
+            const Quaternion toNext = logarithm(multiply(inverse, normalise(next)));
+            const Quaternion toPrevious = logarithm(multiply(inverse, normalise(previous)));
+            const Quaternion average {
+                0.0,
+                -(toNext.x + toPrevious.x) / 4.0,
+                -(toNext.y + toPrevious.y) / 4.0,
+                -(toNext.z + toPrevious.z) / 4.0
+            };
+            return multiply(normalise(current), exponential(average));
+        };
+
+        // q and -q are the same attitude, but the control points are built from differences between
+        // neighbours and go badly wrong when those neighbours sit in opposite hemispheres. A
+        // heading crossing 0/360 produces exactly that - the half angle passes 180 degrees and the
+        // scalar part changes sign - so put all four samples on the same side first. Without this
+        // the interpolated attitude jumps by several degrees between consecutive frames right as
+        // the aircraft passes north.
+        const auto align = [](const Quaternion &reference, const Quaternion &q) noexcept -> Quaternion {
+            return dot(reference, q) < 0.0 ? Quaternion {-q.w, -q.x, -q.y, -q.z} : q;
+        };
+        const Quaternion a1 = normalise(q1);
+        const Quaternion a0 = align(a1, normalise(q0));
+        const Quaternion a2 = align(a1, normalise(q2));
+        const Quaternion a3 = align(a2, normalise(q3));
+
+        const Quaternion s1 = controlPoint(a0, a1, a2);
+        const Quaternion s2 = controlPoint(a1, a2, a3);
+        return slerp(slerp(a1, a2, mu), slerp(s1, s2, mu), 2.0 * mu * (1.0 - mu));
     }
 
 } // namespace

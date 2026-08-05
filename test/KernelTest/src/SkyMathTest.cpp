@@ -312,6 +312,215 @@ void SkyMathTest::interpolateHermite360()
     QCOMPARE(result, expected);
 }
 
+// Attitude interpolation
+
+namespace
+{
+    // Angles are compared to a tenth of a degree: far finer than any attitude is recorded to, and
+    // loose enough not to be tripped by the round trip through the unit sphere
+    constexpr double AngleTolerance {0.1};
+
+    // The attitude an aircraft holds in a steady, coordinated turn: heading sweeping round at a
+    // constant rate, bank and pitch held. Interpolating between two such samples must stay on that
+    // path; three independent Euler splines do not, which is what this is here to pin down.
+    SkyMath::Quaternion coordinatedTurn(double headingDegrees, double bankDegrees, double pitchDegrees)
+    {
+        return SkyMath::quaternionFromEuler(pitchDegrees, bankDegrees, headingDegrees);
+    }
+
+    // Angular distance between two attitudes [degrees], the only meaningful way to say how far
+    // apart two rotations are
+    double angleBetween(const SkyMath::Quaternion &p, const SkyMath::Quaternion &q)
+    {
+        const double cosHalfAngle = std::clamp(std::abs(SkyMath::dot(SkyMath::normalise(p),
+                                                                     SkyMath::normalise(q))), -1.0, 1.0);
+        return Convert::radiansToDegrees(2.0 * std::acos(cosHalfAngle));
+    }
+}
+
+void SkyMathTest::eulerQuaternionRoundTrip_data()
+{
+    QTest::addColumn<double>("pitch");
+    QTest::addColumn<double>("bank");
+    QTest::addColumn<double>("trueHeading");
+
+    QTest::newRow("level, north") << 0.0 << 0.0 << 0.0;
+    QTest::newRow("level, east") << 0.0 << 0.0 << 90.0;
+    QTest::newRow("level, just below north") << 0.0 << 0.0 << 359.5;
+    QTest::newRow("climbing left turn") << 10.0 << -30.0 << 45.0;
+    QTest::newRow("descending right turn") << -8.0 << 25.0 << 270.0;
+    QTest::newRow("steep bank") << 0.0 << 60.0 << 180.0;
+    QTest::newRow("bank near the wrap") << 0.0 << 179.0 << 100.0;
+    QTest::newRow("bank past the wrap") << 0.0 << -179.0 << 100.0;
+    QTest::newRow("steep climb") << 80.0 << 0.0 << 200.0;
+    QTest::newRow("steep descent") << -80.0 << 15.0 << 30.0;
+}
+
+void SkyMathTest::eulerQuaternionRoundTrip()
+{
+    // Setup
+    QFETCH(double, pitch);
+    QFETCH(double, bank);
+    QFETCH(double, trueHeading);
+
+    // Exercise
+    const SkyMath::Quaternion q = SkyMath::quaternionFromEuler(pitch, bank, trueHeading);
+    double actualPitch {0.0}, actualBank {0.0}, actualHeading {0.0};
+    SkyMath::eulerFromQuaternion(q, actualPitch, actualBank, actualHeading);
+
+    // Verify: storage stays in Euler angles, so the conversion has to be lossless in both
+    // directions or every replayed attitude drifts
+    QVERIFY(std::abs(actualPitch - pitch) < ::AngleTolerance);
+    QVERIFY(std::abs(actualBank - bank) < ::AngleTolerance);
+    QVERIFY(std::abs(actualHeading - trueHeading) < ::AngleTolerance);
+}
+
+void SkyMathTest::slerpEndpoints_data()
+{
+    QTest::addColumn<double>("mu");
+    QTest::addColumn<double>("expectedHeading");
+
+    QTest::newRow("start") << 0.0 << 10.0;
+    QTest::newRow("end") << 1.0 << 50.0;
+    QTest::newRow("halfway") << 0.5 << 30.0;
+    QTest::newRow("a quarter in") << 0.25 << 20.0;
+}
+
+void SkyMathTest::slerpEndpoints()
+{
+    // Setup
+    QFETCH(double, mu);
+    QFETCH(double, expectedHeading);
+
+    const SkyMath::Quaternion q0 = SkyMath::quaternionFromEuler(0.0, 0.0, 10.0);
+    const SkyMath::Quaternion q1 = SkyMath::quaternionFromEuler(0.0, 0.0, 50.0);
+
+    // Exercise
+    double pitch {0.0}, bank {0.0}, heading {0.0};
+    SkyMath::eulerFromQuaternion(SkyMath::slerp(q0, q1, mu), pitch, bank, heading);
+
+    // Verify: a pure heading change has to come out as exactly that, at a constant rate
+    QVERIFY(std::abs(heading - expectedHeading) < ::AngleTolerance);
+    QVERIFY(std::abs(pitch) < ::AngleTolerance);
+    QVERIFY(std::abs(bank) < ::AngleTolerance);
+}
+
+void SkyMathTest::slerpTakesTheShortWayRound()
+{
+    // Setup: 350 to 10 degrees is a 20 degree turn through north, not a 340 degree turn the other
+    // way. This is the case that a naive interpolation of the raw numbers gets wrong.
+    const SkyMath::Quaternion q0 = SkyMath::quaternionFromEuler(0.0, 0.0, 350.0);
+    const SkyMath::Quaternion q1 = SkyMath::quaternionFromEuler(0.0, 0.0, 10.0);
+
+    // Exercise
+    double pitch {0.0}, bank {0.0}, heading {0.0};
+    SkyMath::eulerFromQuaternion(SkyMath::slerp(q0, q1, 0.5), pitch, bank, heading);
+
+    // Verify: halfway is due north
+    QVERIFY(std::abs(heading) < ::AngleTolerance || std::abs(heading - 360.0) < ::AngleTolerance);
+}
+
+void SkyMathTest::slerpIsConstantRate()
+{
+    // Setup
+    const SkyMath::Quaternion q0 = SkyMath::quaternionFromEuler(0.0, 0.0, 0.0);
+    const SkyMath::Quaternion q1 = SkyMath::quaternionFromEuler(0.0, 30.0, 90.0);
+
+    // Exercise: the angular distance covered in each of ten equal steps
+    constexpr int Steps {10};
+    std::array<double, Steps> stepAngles {};
+    SkyMath::Quaternion previous = SkyMath::slerp(q0, q1, 0.0);
+    for (int i = 1; i <= Steps; ++i) {
+        const SkyMath::Quaternion current = SkyMath::slerp(q0, q1, static_cast<double>(i) / Steps);
+        stepAngles[static_cast<std::size_t>(i - 1)] = ::angleBetween(previous, current);
+        previous = current;
+    }
+
+    // Verify: spherical linear interpolation means equal steps in time are equal steps in angle.
+    // Independent Euler splines have no such property, which is exactly why an attitude
+    // interpolated that way speeds up and slows down within a single turn.
+    const double first = stepAngles.front();
+    for (const double angle : stepAngles) {
+        QVERIFY(std::abs(angle - first) < ::AngleTolerance);
+    }
+}
+
+void SkyMathTest::squadPassesThroughItsSamples_data()
+{
+    QTest::addColumn<double>("mu");
+    QTest::addColumn<double>("expectedHeading");
+
+    QTest::newRow("at the first sample") << 0.0 << 20.0;
+    QTest::newRow("at the second sample") << 1.0 << 30.0;
+}
+
+void SkyMathTest::squadPassesThroughItsSamples()
+{
+    // Setup
+    QFETCH(double, mu);
+    QFETCH(double, expectedHeading);
+
+    const SkyMath::Quaternion q0 = ::coordinatedTurn(10.0, 20.0, 5.0);
+    const SkyMath::Quaternion q1 = ::coordinatedTurn(20.0, 20.0, 5.0);
+    const SkyMath::Quaternion q2 = ::coordinatedTurn(30.0, 20.0, 5.0);
+    const SkyMath::Quaternion q3 = ::coordinatedTurn(40.0, 20.0, 5.0);
+
+    // Exercise
+    double pitch {0.0}, bank {0.0}, heading {0.0};
+    SkyMath::eulerFromQuaternion(SkyMath::squad(q0, q1, q2, q3, mu), pitch, bank, heading);
+
+    // Verify: whatever the curve does in between, it has to pass through the recorded samples
+    QVERIFY(std::abs(heading - expectedHeading) < ::AngleTolerance);
+    QVERIFY(std::abs(bank - 20.0) < ::AngleTolerance);
+    QVERIFY(std::abs(pitch - 5.0) < ::AngleTolerance);
+}
+
+void SkyMathTest::squadFollowsACoordinatedTurn()
+{
+    // Setup: a steady turn sampled every ten degrees of heading, bank and pitch held constant.
+    // The aircraft never changes bank, so no interpolated attitude should either.
+    constexpr double Bank {30.0};
+    constexpr double Pitch {5.0};
+    const SkyMath::Quaternion q0 = ::coordinatedTurn(0.0, Bank, Pitch);
+    const SkyMath::Quaternion q1 = ::coordinatedTurn(10.0, Bank, Pitch);
+    const SkyMath::Quaternion q2 = ::coordinatedTurn(20.0, Bank, Pitch);
+    const SkyMath::Quaternion q3 = ::coordinatedTurn(30.0, Bank, Pitch);
+
+    // Exercise / Verify
+    for (int i = 0; i <= 20; ++i) {
+        const double mu = static_cast<double>(i) / 20.0;
+        double pitch {0.0}, bank {0.0}, heading {0.0};
+        SkyMath::eulerFromQuaternion(SkyMath::squad(q0, q1, q2, q3, mu), pitch, bank, heading);
+
+        // The bank must not wander: this is the rocking reported in the field, and it is what
+        // three independent Euler splines produce here
+        QVERIFY2(std::abs(bank - Bank) < ::AngleTolerance,
+                 qPrintable(QString("bank drifted to %1 at mu %2").arg(bank).arg(mu)));
+        QVERIFY2(std::abs(pitch - Pitch) < ::AngleTolerance,
+                 qPrintable(QString("pitch drifted to %1 at mu %2").arg(pitch).arg(mu)));
+        // Heading sweeps monotonically from the first sample to the second
+        QVERIFY(heading >= 10.0 - ::AngleTolerance && heading <= 20.0 + ::AngleTolerance);
+    }
+}
+
+void SkyMathTest::squadIsContinuousAcrossTheHeadingWrap()
+{
+    // Setup: a turn straight through north, where the recorded numbers jump from 359 to 0
+    const SkyMath::Quaternion q0 = ::coordinatedTurn(340.0, 15.0, 0.0);
+    const SkyMath::Quaternion q1 = ::coordinatedTurn(350.0, 15.0, 0.0);
+    const SkyMath::Quaternion q2 = ::coordinatedTurn(0.0, 15.0, 0.0);
+    const SkyMath::Quaternion q3 = ::coordinatedTurn(10.0, 15.0, 0.0);
+
+    // Exercise / Verify: no step larger than the whole interval anywhere across the wrap
+    SkyMath::Quaternion previous = SkyMath::squad(q0, q1, q2, q3, 0.0);
+    for (int i = 1; i <= 20; ++i) {
+        const SkyMath::Quaternion current = SkyMath::squad(q0, q1, q2, q3, static_cast<double>(i) / 20.0);
+        const double step = ::angleBetween(previous, current);
+        QVERIFY2(step < 5.0, qPrintable(QString("jump of %1 degrees at step %2").arg(step).arg(i)));
+        previous = current;
+    }
+}
+
 void SkyMathTest::fromPosition_data()
 {
     QTest::addColumn<double>("p");

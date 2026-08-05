@@ -42,6 +42,21 @@ private slots:
     void interpolateHermite360_data();
     void interpolateHermite360();
 
+    void eulerQuaternionRoundTrip_data();
+    void eulerQuaternionRoundTrip();
+
+    void slerpEndpoints_data();
+    void slerpEndpoints();
+
+    void slerpTakesTheShortWayRound();
+    void slerpIsConstantRate();
+
+    void squadPassesThroughItsSamples_data();
+    void squadPassesThroughItsSamples();
+
+    void squadFollowsACoordinatedTurn();
+    void squadIsContinuousAcrossTheHeadingWrap();
+
     void fromPosition_data();
     void fromPosition();
 
