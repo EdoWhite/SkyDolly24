@@ -424,6 +424,26 @@ proprie DLL (evento CodeIntegrity 3077). **Poi il blocco decade da solo** e tutt
 Quindi non serve disattivarlo — cosa peraltro irreversibile senza reinstallare Windows. Se subito
 dopo una build i test falliscono con `0xc0e90002` o `BAD_COMMAND`, aspettare e rieseguire.
 
+**Non serve tirare a indovinare su cosa sia bloccato: lo dice il registro eventi.**
+
+```powershell
+Get-WinEvent -FilterHashtable @{LogName='Microsoft-Windows-CodeIntegrity/Operational'} -MaxEvents 20 |
+  Where-Object Id -in 3033,3077 | Select-Object TimeCreated, Message
+```
+
+Due cose imparate misurando invece che aspettando alla cieca:
+
+- **A essere bloccate sono le DLL, non gli eseguibili.** L'evento 3077 nomina il file preciso, ed è
+  sempre della forma «il processo `XyzTest.exe` ha tentato di caricare `Model.dll`, che non
+  soddisfa i requisiti di firma». Basta quindi che una sola libreria condivisa sia stata ricompilata
+  perché *tutti* i test falliscano insieme: non è che siano rotti, è che nessuno riesce a caricare
+  la libreria. Se `Model.dll` è nuova, i 16 test falliscono tutti, e la lista dei falliti non dice
+  niente su di loro.
+- **Il blocco dura una quarantina di minuti**, non «qualche minuto» come scritto prima. Misurato due
+  volte sulla stessa macchina, e la prima esecuzione verde è arrivata circa 35-40 minuti dopo il
+  link. Ricompilare nel frattempo azzera il conteggio per il file ricompilato, quindi conviene
+  finire tutte le modifiche, fare **una** build, e poi aspettare una volta sola.
+
 Nota per la Fase 6: la release ufficiale di Sky Dolly **non è firmata** (solo le DLL di Qt lo sono)
 e gira lo stesso, perché quei byte esatti hanno reputazione. Un pacchetto nuovo prodotto da noi non
 l'avrà: per distribuirlo servirà un certificato di code signing.
