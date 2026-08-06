@@ -342,7 +342,13 @@ void AbstractSkyConnect::stopReplay() noexcept
     // simulator keeps ignoring its own physics and the user has no way to get control back short of
     // restarting the flight. Sending FREEZE_*_SET twice, or to an aircraft that was never frozen,
     // costs nothing; leaving it frozen once costs the flight.
-    if (!onFreezeUserAircraft(false)) {
+    //
+    // Still attempted when there is no connection, because "no connection" here is a guess about
+    // something that lives in another process - but not complained about, because then it is simply
+    // what is expected: there is no aircraft to unfreeze, and a warning that fires every time the
+    // simulator is not running is one that teaches people to ignore warnings.
+    const bool released = onFreezeUserAircraft(false);
+    if (!released && isConnectedWithSim()) {
         qWarning() << "AbstractSkyConnect::stopReplay: could not release the user aircraft freeze";
     }
 
