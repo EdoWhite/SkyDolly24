@@ -2,8 +2,17 @@
 <!-- Sky Dolly in-game panel.
 
      Loaded both by Microsoft Flight Simulator, from the Community package, and by the Sky Dolly
-     service itself, which serves this very file at http://127.0.0.1:17285/. A complete document
-     rather than a fragment, so that the same file works in both places.
+     service itself, which serves this very file at http://127.0.0.1:17285/. One file for both, so
+     the two cannot drift apart.
+
+     The ingame-ui element below is what gives the panel its frame inside the simulator: the title
+     bar it is dragged by, the border it is resized by, the button that closes it. The first
+     in-simulator test was run without it, and the panel could not be moved at all - a bare document
+     gets no chrome. It follows what the panels shipped with MSFS 2024 do, third-party ones
+     included; panel-id has to match the id in the compiled descriptor, PANEL_SKYDOLLY.
+
+     In an ordinary browser the imports below simply fail and the custom elements stay inert
+     containers, which is why the stylesheet gives them a display of their own.
 
      Keep it self contained: inside the simulator there is no network beyond the loopback service,
      and no build step. -->
@@ -13,8 +22,16 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Sky Dolly</title>
   <link rel="stylesheet" href="SkyDollyPanel.css">
+
+  <!-- Simulator only: absent in a browser, where they fail quietly -->
+  <link rel="import" href="/templates/ingameUi/ingameUi.html">
+  <link rel="import" href="/templates/ingameUiHeader/ingameUiHeader.html">
 </head>
-<body>
+<body class="border-box">
+
+<ingamepanel-custom>
+<ingame-ui id="SkyDollyPanel" panel-id="PANEL_SKYDOLLY" title="Sky Dolly"
+           class="ingameUiFrame" content-fit="true">
 
 <div id="skydolly">
 
@@ -22,6 +39,11 @@
     <span class="dot" id="statusDot"></span>
     <span class="statusText" id="statusText">Connecting to Sky Dolly&hellip;</span>
   </div>
+
+  <!-- Whatever went wrong, said where it can be read. A panel that fails silently is one nobody
+       can report a fault in: the first in-simulator test could only be described as "the buttons
+       do nothing", which is true of a dozen different causes. -->
+  <p class="problem" id="problem" hidden></p>
 
   <!-- Shown when the service does not answer: without this the panel would just sit there empty
        and the reason would be invisible. -->
@@ -84,6 +106,9 @@
 
   </div>
 </div>
+
+</ingame-ui>
+</ingamepanel-custom>
 
 <script src="SkyDollyPanel.js"></script>
 </body>

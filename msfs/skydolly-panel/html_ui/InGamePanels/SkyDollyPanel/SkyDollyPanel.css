@@ -10,6 +10,21 @@ html, body {
     background: #10161d;
 }
 
+/* The hidden attribute normally comes from the engine's default stylesheet, and inside the
+   simulator that cannot be taken on trust. Without this rule the panel shows every one of its
+   states at once - the "not running" notice and the transport together - which looks like a panel
+   whose buttons do nothing rather than one that never connected. */
+[hidden] {
+    display: none !important;
+}
+
+/* Inside the simulator these carry the panel's frame. In a browser they are unknown elements,
+   which default to inline, so they are given a box of their own here. */
+ingamepanel-custom,
+ingame-ui {
+    display: block;
+}
+
 #skydolly {
     font-family: "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
     font-size: 14px;
@@ -32,6 +47,19 @@ html, body {
     margin-bottom: 12px;
     font-size: 12px;
     color: #9fb0c0;
+}
+
+/* Faults, said out loud rather than swallowed */
+.problem {
+    margin: 0 0 12px 0;
+    padding: 8px 10px;
+    border-radius: 4px;
+    background: #3a1d1d;
+    border: 1px solid #7a3030;
+    color: #ffd7d7;
+    font-size: 12px;
+    line-height: 1.4;
+    word-break: break-word;
 }
 
 .dot {
