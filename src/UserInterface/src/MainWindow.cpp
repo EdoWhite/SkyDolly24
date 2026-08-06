@@ -1776,7 +1776,16 @@ void MainWindow::showLogbookSettings() noexcept
 void MainWindow::quit() noexcept
 {
     SkyConnectManager::getInstance().stop();
-    close();
+    // Closing the window is not the same as quitting, and in engine mode it is nowhere near it:
+    // there "quit on last window closed" is switched off - it has to be, or dismissing a dialog
+    // would end a process that is supposed to outlive its window - so close() alone left Sky Dolly
+    // running with nothing but its notification icon, and Quit appeared to do nothing at all.
+    //
+    // close() still comes first, because that is what saves the window geometry and offers the
+    // logbook backup; only if the window accepts it does the application follow.
+    if (close()) {
+        QCoreApplication::quit();
+    }
 }
 
 // View menu
